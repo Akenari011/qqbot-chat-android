@@ -9,6 +9,8 @@ data class ChatMessage(
     val authorOpenId: String = "",
     val authorAvatar: String? = null,
     val imageUrl: String? = null,
+    /** 本地图片文件路径（自己发出的媒体，发送前后都能预览）。 */
+    val localImage: String? = null,
     val videoUrl: String? = null,
     val audioUrl: String? = null,
     val fileName: String? = null,

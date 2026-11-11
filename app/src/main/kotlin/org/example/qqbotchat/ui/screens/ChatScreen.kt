@@ -111,7 +111,7 @@ fun ChatScreen(
     onDelete: (String) -> Unit,
     onButtonClick: (String) -> Unit,
     onOpenMedia: (String) -> Unit,
-    onAttachMedia: (ByteArray, String, Int) -> Unit,
+    onAttachMedia: (ByteArray, String, Int, String?) -> Unit,
     onChannelAction: (org.example.qqbotchat.ui.components.ChannelAction) -> Unit,
     onDismissTools: () -> Unit,
     modifier: Modifier = Modifier,
@@ -134,7 +134,17 @@ fun ChatScreen(
             val bytes = runCatching {
                 context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
             }.getOrNull()
-            if (bytes != null && bytes.isNotEmpty()) onAttachMedia(bytes, name, fileType)
+            if (bytes != null && bytes.isNotEmpty()) {
+                // 图片先落本地文件，供气泡直接预览（发送前后都能看到真实图片）。
+                val localPath = if (fileType == 1) {
+                    runCatching {
+                        val f = java.io.File(context.cacheDir, "out_" + System.currentTimeMillis() + "_" + name)
+                        f.writeBytes(bytes)
+                        f.absolutePath
+                    }.getOrNull()
+                } else null
+                onAttachMedia(bytes, name, fileType, localPath)
+            }
         }
     }
     // 语音录制：麦克风按钮点第一次开始、再点一次停止并作为 file_type=3 发送。
@@ -152,7 +162,7 @@ fun ChatScreen(
             if (file != null) {
                 val bytes = runCatching { file.readBytes() }.getOrNull()
                 if (bytes != null && bytes.isNotEmpty()) {
-                    onAttachMedia(bytes, file.name, 3)
+                    onAttachMedia(bytes, file.name, 3, null)
                 }
             }
         } else if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
@@ -231,19 +241,21 @@ fun ChatScreen(
             IconButton(onClick = { searchOpen = !searchOpen }) {
                 Icon(painterResource(R.drawable.ic_search), "搜索", tint = c.icon)
             }
-            // 频道能力「更多」菜单（对应 TG ChatActivity ActionBar 溢出菜单）。
-            Box {
-                IconButton(onClick = { toolsExpanded = true }) {
-                    Icon(painterResource(R.drawable.ic_more), "更多", tint = c.icon)
+            // 频道能力「更多」菜单只在频道会话显示；群聊 / 私聊没有频道 API，不应出现。
+            if (state.scene == "channel") {
+                Box {
+                    IconButton(onClick = { toolsExpanded = true }) {
+                        Icon(painterResource(R.drawable.ic_more), "更多", tint = c.icon)
+                    }
+                    ChannelToolsMenu(
+                        expanded = toolsExpanded,
+                        onDismiss = { toolsExpanded = false },
+                        onAction = { action ->
+                            toolsExpanded = false
+                            onChannelAction(action)
+                        },
+                    )
                 }
-                ChannelToolsMenu(
-                    expanded = toolsExpanded,
-                    onDismiss = { toolsExpanded = false },
-                    onAction = { action ->
-                        toolsExpanded = false
-                        onChannelAction(action)
-                    },
-                )
             }
         }
 
@@ -304,8 +316,8 @@ fun ChatScreen(
         )
     }
 
-    // 频道能力 API 的结果展示。
-    state.toolsTitle?.let { title ->
+    // 频道能力 API 的结果展示（仅频道会话）。
+    if (state.scene == "channel") state.toolsTitle?.let { title ->
         ChannelToolsDialog(
             title = title,
             items = state.toolsItems,

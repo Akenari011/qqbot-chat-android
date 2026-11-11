@@ -42,6 +42,8 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     private val store: ConversationStore = ConversationStore()
     // 本地持久化：App 重启后恢复会话与消息（对应 TG 的 MessagesStorage）。
     private val repository: ConversationRepository = ConversationRepository(app)
+    /** 演示模式：演示数据只在内存，绝不写盘。 */
+    private var isDemoMode: Boolean = false
     // 设置持久化（SharedPreferences）：主题 / 蓝色渐变 / 字体缩放，重启后保留。
     private val settingsRepo: SettingsRepository = SettingsRepository(app)
     private var api: QQBotApi? = null
@@ -71,11 +73,8 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                 fontScale = settingsRepo.loadFontScale(),
             )
         }
-        val restored = repository.load(store)
-        if (restored == 0) {
-            // 首次启动（或数据损坏被备份）时注入演示会话。
-            demoSeed(store)
-        }
+        // 启动只恢复真实会话；演示数据不自动注入、也不写盘，等用户点「演示模式」。
+        repository.load(store)
         refreshConversations()
     }
 
@@ -94,8 +93,14 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         persist()
     }
 
-    /** 把当前会话状态写入磁盘（内部吞掉失败，不影响 UI）。 */
+    /**
+     * 把当前会话状态写入磁盘（内部吞掉失败，不影响 UI）。
+     *
+     * 演示模式下**不写盘**：演示数据是 UI 预览用的假会话，
+     * 一旦持久化，真实用户重启后会在列表里看到假数据。
+     */
     private fun persist() {
+        if (isDemoMode) return
         repository.save(store)
     }
 
@@ -145,7 +150,8 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         api = newApi
         gateway = newGateway
 
-        // 真实凭证登录成功：清掉演示会话，避免把假数据当成真实会话展示。
+        // 真实凭证登录成功：退出演示模式，清掉内存里的演示会话。
+        isDemoMode = false
         clearDemoConversations()
 
         // 凭证已验证通过，进入主界面；WebSocket 在后台建立，状态文案实时反馈。
@@ -167,9 +173,10 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         _login.update {
             it.copy(connecting = false, connected = true, status = "演示模式 · 未连接网关")
         }
-        // 演示模式下确保有演示数据（真实登录时会被清掉）。
-        val hasDemo = store.allConversations(includeArchived = true).any { it.id.startsWith("demo-") }
-        if (!hasDemo) demoSeed(store)
+        // 演示模式：清空内存后注入演示数据，且整个模式期间不写盘。
+        isDemoMode = true
+        store.clear()
+        demoSeed(store)
         refreshConversations()
     }
 
@@ -187,6 +194,11 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun handleIncoming(event: IncomingEvent) {
+        // 诊断：图片消息但未解析出 URL 时记录日志，便于定位 QQ 字段差异。
+        val diagMsg = event.message
+        if (diagMsg.text.contains("[图片]") && diagMsg.imageUrl == null) {
+            appendLog("图片消息未解析出 URL: text=" + diagMsg.text.take(40))
+        }
         store.onIncoming(event)
         if (_chat.value.conversationId == event.target) refreshChat(event.target)
         refreshConversations()
@@ -464,7 +476,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** 发送富媒体：先上传拿 file_info，再以 msg_type 7 发出。 */
-    fun sendMedia(bytes: ByteArray, fileName: String, fileType: Int) {
+    fun sendMedia(bytes: ByteArray, fileName: String, fileType: Int, localPath: String? = null) {
         val conversationId = _chat.value.conversationId
         val conversation = store.getConversation(conversationId) ?: return
         val local = ChatMessage(
@@ -476,6 +488,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
             status = "sending",
             fileName = if (fileType == 4) fileName else null,
             imageUrl = if (fileType == 1) "local" else null,
+            localImage = if (fileType == 1) localPath else null,
             videoUrl = if (fileType == 2) "local" else null,
             audioUrl = if (fileType == 3) "local" else null,
         )

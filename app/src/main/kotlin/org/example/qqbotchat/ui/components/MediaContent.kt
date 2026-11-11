@@ -95,6 +95,7 @@ fun MediaContent(
         when {
             message.imageUrl != null -> ImageMedia(
                 url = message.imageUrl!!,
+                localPath = message.localImage,
                 message = message,
                 outgoing = outgoing,
                 onClickImage = onClickImage,
@@ -128,11 +129,13 @@ fun MediaContent(
 @Composable
 private fun ImageMedia(
     url: String,
+    localPath: String?,
     message: ChatMessage,
     outgoing: Boolean,
     onClickImage: (String) -> Unit,
 ) {
-    val resolvedUrl = normalizeUrl(url)
+    // 自己发出的图片优先用本地文件预览（发送前后都能看到真实图片）。
+    val resolvedUrl = localPath?.takeIf { it.isNotBlank() } ?: normalizeUrl(url)
     // 本地待发送媒体用 "local" 占位（ViewModel.sendMedia 落库时写入），
     // 不应交给 Coil 走网络加载而误报失败；直接显示「图片 · 发送中」占位。
     val isLocalPlaceholder = url == "local" || (!resolvedUrl.startsWith("http") &&

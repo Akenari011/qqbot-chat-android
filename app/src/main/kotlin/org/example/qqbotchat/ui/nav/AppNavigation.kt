@@ -107,7 +107,7 @@ fun AppNavigation(viewModel: ChatViewModel, modifier: Modifier = Modifier) {
                 onDelete = viewModel::deleteMessage,
                 onChannelAction = viewModel::runChannelAction,
                 onDismissTools = viewModel::dismissTools,
-                onAttachMedia = { bytes, name, type -> viewModel.sendMedia(bytes, name, type) },
+                onAttachMedia = { bytes, name, type, path -> viewModel.sendMedia(bytes, name, type, path) },
                 onButtonClick = viewModel::onButtonClick,
                 onOpenMedia = { url ->
                     // 把媒体 / 文件 URL 交给系统查看器；本地占位 URL 直接忽略。
