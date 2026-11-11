@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Derived from DrKLO/Telegram (GPL-2.0), commit 7be672ead283d022812d75c729d3a04dd4c2a2c6.
+  Sources: SharedConfig.java:321,323; MessageDrawable.java:600-616,704-832;
+  Theme.java:8133-8146,8506; ChatMessageCell.java:6887,7203-7213,12188-12273,12332,13726-13732;
+  DialogCell.java:172-177,1275-1284,2491-2518,3196-3198,5386.
+  See third_party/telegram-android/UI_SPEC.md §1/§3/§4.
+-->
+<resources>
+    <!-- Bubble geometry (MessageDrawable.java) -->
+    <dimen name="tg_bubble_radius">17dp</dimen>
+    <dimen name="tg_bubble_near_radius">6dp</dimen>
+    <dimen name="tg_bubble_tail_radius">6dp</dimen>
+    <dimen name="tg_bubble_draw_padding">2dp</dimen>
+    <dimen name="tg_bubble_tail_offset">8dp</dimen>
+    <dimen name="tg_bubble_tip">2.6dp</dimen>
+
+    <!-- Chat text / bubble metrics -->
+    <dimen name="tg_msg_text_size">16sp</dimen>
+    <dimen name="tg_msg_name_size">14sp</dimen>
+    <dimen name="tg_msg_time_size">12sp</dimen>
+    <dimen name="tg_msg_quote_size">13sp</dimen>
+    <dimen name="tg_msg_file_size">15sp</dimen>
+    <dimen name="tg_bubble_pad_out_h">11dp</dimen>
+    <dimen name="tg_bubble_pad_in_h">17dp</dimen>
+    <dimen name="tg_bubble_pad_top">10dp</dimen>
+    <dimen name="tg_bubble_height_extra">19.5dp</dimen>
+    <dimen name="tg_bubble_width_extra">31dp</dimen>
+    <dimen name="tg_max_width_margin">80dp</dimen>
+    <dimen name="tg_max_width_avatar_extra">42dp</dimen>
+    <dimen name="tg_time_x_out">38.5dp</dimen>
+    <dimen name="tg_time_x_in">9dp</dimen>
+    <dimen name="tg_line_spacing_add">1dp</dimen>
+
+    <!-- Dialog cell -->
+    <dimen name="tg_dialog_row_height">70dp</dimen>
+    <dimen name="tg_dialog_row_height_3line">76dp</dimen>
+    <dimen name="tg_dialog_avatar">52dp</dimen>
+    <dimen name="tg_dialog_avatar_3line">56dp</dimen>
+    <dimen name="tg_dialog_avatar_radius">26dp</dimen>
+    <dimen name="tg_dialog_avatar_start">11dp</dimen>
+    <dimen name="tg_dialog_padding_start">72dp</dimen>
+    <dimen name="tg_dialog_name_left">76dp</dimen>
+    <dimen name="tg_dialog_time_margin">15dp</dimen>
+    <dimen name="tg_dialog_name_size">17sp</dimen>
+    <dimen name="tg_dialog_message_size">16sp</dimen>
+    <dimen name="tg_dialog_time_size">12sp</dimen>
+
+    <!-- Unread badge (DialogCell BADGE_*) -->
+    <dimen name="tg_badge_size">20.666dp</dimen>
+    <dimen name="tg_badge_text_padding">6.333dp</dimen>
+    <dimen name="tg_badge_text_min_width">8dp</dimen>
+    <dimen name="tg_badge_radius">11.5dp</dimen>
+    <dimen name="tg_dialog_badge_text_size">12sp</dimen>
+
+    <dimen name="tg_action_bar_height">56dp</dimen>
+    <dimen name="tg_divider_height">1px</dimen>
+</resources>

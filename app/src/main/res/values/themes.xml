@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 设计参考 Telegram for Android (GPL-2.0)：宿主窗口主题（Compose 内容色由 ui/theme/Theme.kt 接管）。
+     来自 TG 的常量：windowBackground 白、ActionBar 无标题（对应 _tg_ref/styles.xml 中
+     Theme.TMessages 的 windowNoTitle=true 与 android:colorBackground=@android:color/white）。 -->
+<resources>
+    <style name="Theme.QQBotChat" parent="android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@android:color/white</item>
+        <item name="android:statusBarColor">@android:color/white</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowActionBar">false</item>
+        <item name="android:windowNoTitle">true</item>
+    </style>
+</resources>

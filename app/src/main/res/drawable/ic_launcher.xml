@@ -1,0 +1,10 @@
+<!-- 设计参考 Telegram for Android (GPL-2.0)：线性图标沿用 TG ActionBar / 输入栏 24dp 图标规范（形状为简笔重绘，非逐路径复制）。
+     来自 TG 的常量：24dp 图标网格、1.8dp 线性描边；具体色值由 Compose 的 Icon(tint=...) 在运行时注入，不在本文件固定。 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <!-- 来自 TG 的常量：纸飞机轮廓；底色取自 chat_outBubble 渐变止色 #0088FF，折角取自起色 #57B2E0。 -->
+    <path android:fillColor="#FF0088FF" android:pathData="M0,0 H108 V108 H0 Z" />
+    <path android:fillColor="#FFFFFFFF" android:pathData="M22,50 L86,30 L66,86 L50,64 Z" />
+    <path android:fillColor="#FF57B2E0" android:pathData="M50,64 L86,30 L66,86 Z" />
+</vector>

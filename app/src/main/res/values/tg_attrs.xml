@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 设计参考 Telegram for Android (GPL-2.0)
+     原样搬入自 qqbot-chat-android/third_party/telegram-android/res/values/attrs.xml。
+     来自 TG 的常量：:3 widgetBackgroundCornerRadius、:5-:9 各 widgetPreview* 自定义属性声明。 -->
+<resources>
+    <attr name="widgetBackgroundCornerRadius" format="dimension" />
+
+    <attr name="widgetPreviewTitle" format="string" />
+    <attr name="widgetPreviewContent" format="string" />
+    <attr name="widgetPreviewTime" format="string" />
+    <attr name="widgetPreviewImage" format="reference" />
+    <attr name="widgetPreviewDot" format="integer" />
+</resources>

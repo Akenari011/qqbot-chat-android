@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 设计参考 Telegram for Android (GPL-2.0)
+     从 qqbot-chat-android/third_party/telegram-android/res/values/styles.xml 逐条抽取的原始数值。
+     资源名统一加 tg_appwidget_ 前缀，避免与权威常量文件 tg_dimens.xml 里的同名 dimen 冲突。
+     行号出处：:115 #ff527da3、:132 dividerHeight 1dp、:124 textSize 18sp、:229 padding 2dp、
+     :238 layout_height 23dp、:239/:240 paddingLeft/Right 7dp、:241 paddingBottom 1dp、
+     :244 minWidth 23dp、:245 textSize 13dp -->
+<resources>
+    <color name="tg_appwidget_start_action_bar_blue">#ff527da3</color>
+    <dimen name="tg_appwidget_list_divider_height">1dp</dimen>
+    <dimen name="tg_appwidget_actionbar_item_text_size">18sp</dimen>
+    <dimen name="tg_appwidget_background_padding">2dp</dimen>
+    <dimen name="tg_appwidget_badge_height">23dp</dimen>
+    <dimen name="tg_appwidget_badge_padding_horizontal">7dp</dimen>
+    <dimen name="tg_appwidget_badge_padding_bottom">1dp</dimen>
+    <dimen name="tg_appwidget_badge_min_width">23dp</dimen>
+    <dimen name="tg_appwidget_badge_text_size">13dp</dimen>
+</resources>

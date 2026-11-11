@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Derived from DrKLO/Telegram (GPL-2.0), commit 7be672ead283d022812d75c729d3a04dd4c2a2c6,
+  file TMessagesProj/src/main/java/org/telegram/ui/ActionBar/ThemeColors.java:20 createDefaultColors().
+  Default light theme key colors, transcribed verbatim. See third_party/telegram-android/UI_SPEC.md §2.
+-->
+<resources>
+    <color name="tg_telegram_color">#FF229AF0</color>
+    <color name="tg_telegram_color_text">#FF298ACF</color>
+    <color name="tg_default_black_text">#FF1A1D21</color>
+
+    <color name="tg_chat_in_bubble">#FFFFFFFF</color>
+    <color name="tg_chat_in_bubble_selected">#FFECF7FD</color>
+    <color name="tg_chat_in_bubble_shadow">#FF1D3753</color>
+    <color name="tg_chat_out_bubble">#FFEFFFDE</color>
+    <color name="tg_chat_out_bubble_selected">#FFD9F7C5</color>
+    <color name="tg_chat_out_bubble_shadow">#FF1E750C</color>
+
+    <color name="tg_chat_message_text_in">#FF000000</color>
+    <color name="tg_chat_message_text_out">#FF000000</color>
+    <color name="tg_chat_message_link_in">#FF2678B6</color>
+    <color name="tg_chat_message_link_out">#FF2678B6</color>
+    <color name="tg_chat_in_time_text">#FFA1AAB3</color>
+    <color name="tg_chat_out_time_text">#FF70B15C</color>
+    <color name="tg_chat_media_time_text">#FFFFFFFF</color>
+    <color name="tg_chat_in_file_name_text">#FF298ACF</color>
+    <color name="tg_chat_out_file_name_text">#FF55AB4F</color>
+    <color name="tg_chat_in_file_background">#FFEBF0F5</color>
+    <color name="tg_chat_out_file_background">#FFDAF5C3</color>
+    <color name="tg_chat_in_reply_name_text">#FF298ACF</color>
+    <color name="tg_chat_out_reply_name_text">#FF55AB4F</color>
+
+    <color name="tg_divider">#FFD9D9D9</color>
+    <color name="tg_widget_divider">#FFDCDCDC</color>
+    <color name="tg_action_bar_default">#FFFFFFFF</color>
+    <color name="tg_action_bar_default_title">#FF1A1D21</color>
+    <color name="tg_action_bar_default_subtitle">#FF79817E</color>
+    <color name="tg_window_background_white">#FFFFFFFF</color>
+
+    <color name="tg_chats_name">#FF1A1D21</color>
+    <color name="tg_chats_message">#FF75787A</color>
+    <color name="tg_chats_date">#FF848688</color>
+    <color name="tg_chats_unread_counter">#FF229AF0</color>
+    <color name="tg_chats_unread_counter_muted">#FFBEC3C7</color>
+    <color name="tg_chats_unread_counter_text">#FFFFFFFF</color>
+    <color name="tg_chats_pinned_icon">#FF919294</color>
+    <color name="tg_chats_mute_icon">#FFBDC1C4</color>
+    <color name="tg_chats_sent_check">#FF46AA36</color>
+    <color name="tg_chats_draft">#FFDD4B39</color>
+
+    <color name="tg_avatar_red">#FFCC5049</color>
+    <color name="tg_avatar_orange">#FFD67722</color>
+    <color name="tg_avatar_violet">#FF955CDB</color>
+    <color name="tg_avatar_green">#FF40A920</color>
+    <color name="tg_avatar_cyan">#FF309EBA</color>
+    <color name="tg_avatar_blue">#FF368AD1</color>
+    <color name="tg_avatar_pink">#FFC7508B</color>
+
+    <color name="tg_start_action_bar_blue">#FF527DA3</color>
+</resources>

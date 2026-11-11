@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 设计参考 Telegram for Android (GPL-2.0)
+     原样搬入自 qqbot-chat-android/third_party/telegram-android/res/values/integers.xml。
+     来自 TG 的常量：:3 splash_screen_duration=450。 -->
+<resources>
+    <integer name="splash_screen_duration">450</integer>
+</resources>

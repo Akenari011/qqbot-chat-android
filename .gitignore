@@ -1,0 +1,16 @@
+# 构建产物
+*.apk
+*.jks
+*.keystore
+build/
+.gradle/
+.kotlin/
+local.properties
+
+# 签名密钥（只在春川构建机，绝不入库）
+signing.properties
+
+# IDE / 系统
+.idea/
+.DS_Store
+*.iml

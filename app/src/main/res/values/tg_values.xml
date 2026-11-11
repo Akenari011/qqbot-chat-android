@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 设计参考 Telegram for Android (GPL-2.0)
+     原样搬入自 qqbot-chat-android/third_party/telegram-android/res/values/values.xml。
+     来自 TG 的常量：:3 isTablet、:4 custom_notification_corner_radius=2dip、
+     :5 app_widget_background_corner_radius=16dp（与 ChatMessageCell 气泡圆角 16dp 对齐）。 -->
+<resources>
+    <bool name="isTablet">false</bool>
+    <dimen name="custom_notification_corner_radius">2dip</dimen>
+    <dimen name="app_widget_background_corner_radius">16dp</dimen>
+</resources>

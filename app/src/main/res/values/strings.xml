@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 设计参考 Telegram for Android (GPL-2.0)：中文 UI 文案；
+     来自 TG 的常量：无（字符串资源）；屏幕文案对照 TG DialogCell / ChatActivity / SettingsActivity。 -->
+<resources>
+    <string name="app_name">QQBot Chat</string>
+</resources>
