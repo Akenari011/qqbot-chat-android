@@ -17,6 +17,11 @@ import androidx.activity.result.contract.ActivityResultContracts
 import org.example.qqbotchat.util.AudioRecorder
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -169,15 +174,30 @@ fun ChatScreen(
     }
     val grouped = remember(visibleMessages) { buildChatItems(visibleMessages) }
 
-    LaunchedEffect(grouped.size) {
-        if (grouped.isNotEmpty()) listState.animateScrollToItem(grouped.lastIndex)
+    // 只在新消息到达时滚到底部：用消息条数（而非 grouped.size）判断，
+    // 避免键盘弹出 / 日期分组变化导致列表被反复 animate 滚动。
+    val messageCount = visibleMessages.size
+    LaunchedEffect(messageCount) {
+        if (messageCount > 0 && listState.layoutInfo.totalItemsCount > 0) {
+            listState.scrollToItem(listState.layoutInfo.totalItemsCount - 1)
+        }
     }
 
-    Column(modifier = modifier.fillMaxSize().background(c.background)) {
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .background(c.background)
+            // 底部同时避让「输入法」与「系统导航栏」：
+            // 只用 imePadding() 会在键盘收起时被导航栏遮住输入框。
+            .navigationBarsPadding()
+            .imePadding(),
+    ) {
         // ActionBar：返回 + 头像 + 标题/场景 + 搜索（对应 TG ChatActivity 顶栏）。
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                // 顶栏避让状态栏（edge-to-edge 下必须显式处理，否则标题被状态栏遮挡）。
+                .statusBarsPadding()
                 .height(TgDimens.ActionBarHeight)
                 .background(c.actionBar)
                 .padding(horizontal = 8.dp),

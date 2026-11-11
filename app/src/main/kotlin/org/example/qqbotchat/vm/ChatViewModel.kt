@@ -29,6 +29,7 @@ import com.google.gson.JsonObject
 import org.example.qqbotchat.core.MessageParser
 import org.example.qqbotchat.core.QQBotApi
 import org.example.qqbotchat.data.ConversationRepository
+import org.example.qqbotchat.data.SettingsRepository
 import org.example.qqbotchat.runtime.demoSeed
 import org.example.qqbotchat.runtime.stateText
 import org.example.qqbotchat.util.clockTime
@@ -41,6 +42,8 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     private val store: ConversationStore = ConversationStore()
     // 本地持久化：App 重启后恢复会话与消息（对应 TG 的 MessagesStorage）。
     private val repository: ConversationRepository = ConversationRepository(app)
+    // 设置持久化（SharedPreferences）：主题 / 蓝色渐变 / 字体缩放，重启后保留。
+    private val settingsRepo: SettingsRepository = SettingsRepository(app)
     private var api: QQBotApi? = null
     private var gateway: GatewayClient? = null
     private val logs: MutableList<String> = Collections.synchronizedList(mutableListOf())
@@ -60,12 +63,35 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
 
     init {
         // 启动顺序：先尝试恢复上次的会话数据；只有本地无数据时才注入演示会话。
+        // 恢复上次的外观设置（TG 用 SharedConfig 持久化同类偏好）。
+        _settings.update {
+            it.copy(
+                darkTheme = settingsRepo.loadDarkTheme(),
+                blueGradient = settingsRepo.loadBlueGradient(),
+                fontScale = settingsRepo.loadFontScale(),
+            )
+        }
         val restored = repository.load(store)
         if (restored == 0) {
             // 首次启动（或数据损坏被备份）时注入演示会话。
             demoSeed(store)
         }
         refreshConversations()
+    }
+
+    /**
+     * 删除所有演示会话（id 以 "demo-" 开头，见 BotRuntime.demoSeed）。
+     *
+     * 真实凭证登录成功后调用，保证列表里只出现真实 QQ 会话。
+     */
+    private fun clearDemoConversations() {
+        val demoIds = store.allConversations(includeArchived = true)
+            .filter { it.id.startsWith("demo-") }
+            .map { it.id }
+        if (demoIds.isEmpty()) return
+        demoIds.forEach { store.deleteConversation(it) }
+        if (_chat.value.conversationId.startsWith("demo-")) _chat.update { ChatUiState() }
+        persist()
     }
 
     /** 把当前会话状态写入磁盘（内部吞掉失败，不影响 UI）。 */
@@ -119,6 +145,9 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         api = newApi
         gateway = newGateway
 
+        // 真实凭证登录成功：清掉演示会话，避免把假数据当成真实会话展示。
+        clearDemoConversations()
+
         // 凭证已验证通过，进入主界面；WebSocket 在后台建立，状态文案实时反馈。
         _login.update {
             it.copy(connecting = false, connected = true, status = "已验证 · 正在建立网关连接…")
@@ -138,6 +167,9 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         _login.update {
             it.copy(connecting = false, connected = true, status = "演示模式 · 未连接网关")
         }
+        // 演示模式下确保有演示数据（真实登录时会被清掉）。
+        val hasDemo = store.allConversations(includeArchived = true).any { it.id.startsWith("demo-") }
+        if (!hasDemo) demoSeed(store)
         refreshConversations()
     }
 
@@ -163,6 +195,10 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     // ---- 会话列表 ----
     private fun refreshConversations() {
         val query = _conversations.value.query.trim()
+        // 归档会话单独一组，对应 TG DialogsActivity 顶部的「已归档」入口。
+        val archived = store.allConversations(includeArchived = true)
+            .filter { it.archived }
+            .sortedByDescending { MessageParser.epoch(it.lastTimestamp) }
         val list = store.allConversations(includeArchived = false)
             // TG DialogsActivity：置顶会话优先，其余按最后消息时间倒序。
             .sortedWith(
@@ -174,9 +210,19 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                     it.displayName.contains(query, ignoreCase = true) ||
                     it.lastText.contains(query, ignoreCase = true)
             }
-        _conversations.update { it.copy(conversations = list) }
+        _conversations.update {
+            it.copy(
+                conversations = list,
+                archivedConversations = if (query.isEmpty()) archived else emptyList(),
+            )
+        }
         // 会话状态变更后落盘，保证 App 重启后数据不丢。
         persist()
+    }
+
+    /** 切换「查看归档」模式。 */
+    fun toggleArchivedView() {
+        _conversations.update { it.copy(showingArchived = !it.showingArchived) }
     }
 
     fun onQueryChange(value: String) {
@@ -554,14 +600,18 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     // ---- 设置 ----
     fun setBlueGradient(value: Boolean) {
         _settings.update { it.copy(blueGradient = value) }
+        settingsRepo.saveBlueGradient(value)
     }
 
     fun setDarkTheme(value: Boolean) {
         _settings.update { it.copy(darkTheme = value) }
+        settingsRepo.saveDarkTheme(value)
     }
 
     fun setFontScale(value: Float) {
-        _settings.update { it.copy(fontScale = value.coerceIn(0.85f, 1.30f)) }
+        val clamped = value.coerceIn(SettingsRepository.MIN_FONT_SCALE, SettingsRepository.MAX_FONT_SCALE)
+        _settings.update { it.copy(fontScale = clamped) }
+        settingsRepo.saveFontScale(clamped)
     }
 
     fun bumpFontScale(delta: Float) {

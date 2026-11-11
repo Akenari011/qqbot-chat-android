@@ -6,6 +6,7 @@
 package org.example.qqbotchat.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -62,7 +63,12 @@ fun SettingsScreen(
         }
     }
 
-    Column(modifier = modifier.fillMaxSize().background(c.background)) {
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .background(c.background)
+            .statusBarsPadding(),
+    ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()

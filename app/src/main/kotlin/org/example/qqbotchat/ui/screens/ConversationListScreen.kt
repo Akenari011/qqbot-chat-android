@@ -8,6 +8,11 @@ package org.example.qqbotchat.ui.screens
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,6 +21,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -51,6 +58,7 @@ fun ConversationListScreen(
     onToggleMute: (String) -> Unit,
     onToggleArchive: (String) -> Unit,
     onDelete: (String) -> Unit,
+    onToggleArchivedView: () -> Unit,
     onSettings: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -58,7 +66,14 @@ fun ConversationListScreen(
     var searchOpen by remember { mutableStateOf(false) }
     // 长按选中的会话（TG DialogsActivity 的长按上下文菜单）。
     var actionTarget by remember { mutableStateOf<org.example.qqbotchat.core.Conversation?>(null) }
-    Column(modifier = modifier.fillMaxSize().background(c.background)) {
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .background(c.background)
+            // 顶栏自绘，需要自己避让状态栏。
+            .statusBarsPadding()
+            .navigationBarsPadding(),
+    ) {
         // 自绘 ActionBar（避免 material3 TopAppBar 的 experimental 依赖），对应 TG ActionBar。
         Row(
             modifier = Modifier
@@ -103,8 +118,37 @@ fun ConversationListScreen(
                 )
             }
         } else {
+            val shown = if (state.showingArchived) state.archivedConversations else state.conversations
             LazyColumn(modifier = Modifier.fillMaxSize()) {
-                items(state.conversations, key = { it.id }) { conversation ->
+                // TG DialogsActivity：普通列表顶部有「已归档」入口行。
+                if (!state.showingArchived && state.archivedConversations.isNotEmpty()) {
+                    item(key = "archived-row") {
+                        ArchivedRow(
+                            count = state.archivedConversations.size,
+                            onClick = onToggleArchivedView,
+                        )
+                    }
+                }
+                if (state.showingArchived) {
+                    item(key = "back-row") {
+                        ArchivedRow(count = shown.size, onClick = onToggleArchivedView, back = true)
+                    }
+                }
+                if (shown.isEmpty()) {
+                    item(key = "empty") {
+                        Box(
+                            Modifier.fillMaxWidth().padding(24.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(
+                                text = "暂无已归档会话",
+                                color = c.subtitle,
+                                fontSize = TgDimens.MessageTextSize,
+                            )
+                        }
+                    }
+                }
+                items(shown, key = { it.id }) { conversation ->
                     DialogCell(
                         conversation = conversation,
                         onClick = { onOpen(conversation.id) },
@@ -141,6 +185,58 @@ fun ConversationListScreen(
                 onDelete(conv.id)
                 actionTarget = null
             },
+        )
+    }
+}
+
+/**
+ * 「已归档」入口行，对应 TG DialogsActivity 的 archived row
+ * （图标 + 文案 + 数量，行高 70dp，分隔线左缩进 72dp）。
+ */
+@Composable
+private fun ArchivedRow(count: Int, onClick: () -> Unit, back: Boolean = false) {
+    val c = TgTheme.colors
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(TgDimens.ListItemHeight)
+                .clickable(onClick = onClick)
+                .padding(end = TgDimens.TimeRightPadding),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Spacer(Modifier.width(TgDimens.CellHorizontalPadding))
+            Box(
+                modifier = Modifier
+                    .size(TgDimens.AvatarSize)
+                    .clip(RoundedCornerShape(26.dp))
+                    .background(c.primary.copy(alpha = 0.15f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(text = if (back) "←" else "▣", fontSize = 22.sp, color = c.primary)
+            }
+            Spacer(
+                Modifier.width(
+                    TgDimens.NameLeftTwoLine - TgDimens.CellHorizontalPadding - TgDimens.AvatarSize,
+                ),
+            )
+            Text(
+                text = if (back) "返回聊天列表" else "已归档",
+                fontSize = TgDimens.NameSize,
+                fontWeight = FontWeight.SemiBold,
+                color = c.name,
+                modifier = Modifier.weight(1f),
+            )
+            if (!back) {
+                Text(text = count.toString(), fontSize = TgDimens.ListTimeSize, color = c.time)
+            }
+        }
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = TgDimens.DividerStartPadding)
+                .height(TgDimens.DividerThickness)
+                .background(c.divider),
         )
     }
 }

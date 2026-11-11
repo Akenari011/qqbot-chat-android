@@ -7,6 +7,7 @@ package org.example.qqbotchat
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.getValue
@@ -21,6 +22,9 @@ import org.example.qqbotchat.vm.ChatViewModel
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // 边到边绘制：状态栏 / 导航栏 / 输入法由各屏自行用 WindowInsets 避让，
+        // 避免硬编码 statusBarColor 导致的顶栏被遮挡问题。
+        enableEdgeToEdge()
         setContent {
             val vm: ChatViewModel = viewModel()
             val settings by vm.settings.collectAsStateWithLifecycle()

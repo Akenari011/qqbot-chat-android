@@ -19,6 +19,10 @@ data class LoginUiState(
 /** 会话列表页：直接持有 :core 的 Conversation，便于 DialogCell 原样渲染。 */
 data class ConversationListUiState(
     val conversations: List<Conversation> = emptyList(),
+    /** 已归档会话（TG 列表顶部的「已归档」行）。 */
+    val archivedConversations: List<Conversation> = emptyList(),
+    /** 是否正在查看归档列表。 */
+    val showingArchived: Boolean = false,
     val query: String = "",
 )
 

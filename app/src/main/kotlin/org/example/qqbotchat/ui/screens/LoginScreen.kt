@@ -6,6 +6,10 @@
 package org.example.qqbotchat.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -47,7 +51,13 @@ fun LoginScreen(
 ) {
     val c = TgTheme.colors
     Column(
-        modifier = modifier.fillMaxSize().background(c.background).padding(24.dp),
+        modifier = modifier
+            .fillMaxSize()
+            .background(c.background)
+            .statusBarsPadding()
+            .imePadding()
+            .verticalScroll(rememberScrollState())
+            .padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {

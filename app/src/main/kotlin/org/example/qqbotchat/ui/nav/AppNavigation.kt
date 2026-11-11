@@ -71,6 +71,7 @@ fun AppNavigation(viewModel: ChatViewModel, modifier: Modifier = Modifier) {
                 onToggleMute = viewModel::toggleMute,
                 onToggleArchive = viewModel::toggleArchive,
                 onDelete = viewModel::deleteConversation,
+                onToggleArchivedView = viewModel::toggleArchivedView,
                 onSettings = { navController.navigate(Route.Settings.route) },
             )
         }
