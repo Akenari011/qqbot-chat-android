@@ -74,3 +74,26 @@ Release 包已改用自有 keystore（不再用 debug 证书）：
 登录页「演示模式（无需凭证）」调用 `ChatViewModel.enterDemoMode()` 直接进入本地演示数据，
 用于无凭证 / 无网络环境的 UI 预览。真实「连接」按钮会先调 QQ `/app/getAppAccessToken` 校验凭证，
 无效凭证拦在登录页并显示「AppID 或 AppSecret 无效」。
+
+## aapt2 在 arm64 上的 loader 修复（2026-11-11）
+
+`QEMU_LD_PREFIX` 对 aapt2 的 **daemon 子进程**不生效（Gradle 启动 daemon 时环境变量丢失），
+表现为 `processDebugResources FAILED / aapt2 Daemon startup failed`。
+
+彻底解决办法：把 x86_64 的 loader 与运行时库装进系统路径，aapt2 不再依赖环境变量。
+
+```bash
+# 1) loader
+sudo mkdir -p /lib64 /lib/x86_64-linux-gnu
+sudo cp -n ~/android-build/x86sysroot/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2 /lib/x86_64-linux-gnu/
+sudo ln -sf /lib/x86_64-linux-gnu/ld-linux-x86-64.so.2 /lib64/ld-linux-x86-64.so.2
+
+# 2) 运行时库（libc / libgcc_s / libstdc++ / libz / libzstd 等）
+sudo cp -a ~/android-build/x86sysroot/lib/x86_64-linux-gnu/. /lib/x86_64-linux-gnu/
+sudo ldconfig
+
+# 3) 验证：不设 QEMU_LD_PREFIX 也能跑
+~/android-build/sdk/build-tools/35.0.0/aapt2 version
+```
+
+装好后构建不再需要 `export QEMU_LD_PREFIX=...`。
