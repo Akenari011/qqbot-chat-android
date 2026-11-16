@@ -5,7 +5,7 @@
 // getChannelSchedules / getChannelMessages / addReaction / removeReaction）补齐 UI 层入口。
 //
 // 组成：
-//   · ChannelToolsMenu   —— 溢出下拉菜单，13 个入口，点击只派发 ChannelAction；
+//   · ChannelToolsMenu   —— 溢出下拉菜单，仅显示已接入能力的 6 个入口；
 //   · ChannelAction      —— sealed interface，每个入口一个 data object，供 ChatViewModel 的 when 穷尽分发；
 //   · ChannelToolsDialog —— 用 Dialog 自绘卡片，展示频道 API 返回的文本列表。
 //
@@ -95,20 +95,13 @@ private data class ChannelMenuEntry(
     val action: ChannelAction,
 )
 
-/** 13 个入口，顺序即菜单展示顺序（对应 ChatActivity 溢出菜单的分组）。 */
+/** Only expose operations backed by a callable API; message reactions live in the message sheet. */
 private val CHANNEL_MENU_ENTRIES = listOf(
     ChannelMenuEntry("🗂", "频道列表", ChannelAction.MyGuilds),
     ChannelMenuEntry("☰", "子频道列表", ChannelAction.GuildChannels),
-    ChannelMenuEntry("👥", "频道成员", ChannelAction.GuildMembers),
     ChannelMenuEntry("📌", "置顶消息", ChannelAction.ChannelPins),
     ChannelMenuEntry("📅", "日程", ChannelAction.ChannelSchedules),
     ChannelMenuEntry("⏬", "拉取历史 50 条", ChannelAction.ChannelHistory),
-    ChannelMenuEntry("⭐", "设为置顶", ChannelAction.Pin),
-    ChannelMenuEntry("✖", "取消置顶", ChannelAction.Unpin),
-    ChannelMenuEntry("📢", "发布公告", ChannelAction.PublishAnnouncement),
-    ChannelMenuEntry("🔕", "取消公告", ChannelAction.CancelAnnouncement),
-    ChannelMenuEntry("😀", "表情回应", ChannelAction.React),
-    ChannelMenuEntry("🙋", "消息表态用户", ChannelAction.ReactionUsers),
     ChannelMenuEntry("📤", "导出日志", ChannelAction.ExportLog),
 )
 

@@ -1,57 +1,40 @@
-// 设计参考 Telegram for Android (GPL-2.0)
-// 会话列表页，对应 TG 的 DialogsActivity + DialogCell。
-// 来自 TG 的常量（源码:行号）：DialogCell.java:174-177 行高 70dp、:2518 头像 52dp、
-// :2514 名字左侧 76dp、:1298-1313 会话名 17sp / 摘要 16sp、Theme.java:8506 时间 12sp、
-// ThemeColors.java:20 chats_name/chats_message/chats_date/chats_unreadCounter/divider 色值、
-// styles.xml 分隔线 1dp #FFD9D9D9（见 ui/theme/Dimens.kt 与 Color.kt 逐条出处）。
+// Telegram-inspired layout; see THIRD_PARTY_NOTICES.md for design attributions.
 package org.example.qqbotchat.ui.screens
 
-import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.ui.draw.clip
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.launch
 import org.example.qqbotchat.R
-import org.example.qqbotchat.ui.components.ConversationActionSheet
-import org.example.qqbotchat.ui.components.DialogCell
-import org.example.qqbotchat.ui.theme.TgDimens
+import org.example.qqbotchat.core.Conversation
+import org.example.qqbotchat.core.ConversationFilter
+import org.example.qqbotchat.core.filterConversations
+import org.example.qqbotchat.ui.components.*
+import org.example.qqbotchat.ui.theme.TgMotion
 import org.example.qqbotchat.ui.theme.TgTheme
 import org.example.qqbotchat.vm.ConversationListUiState
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ConversationListScreen(
     state: ConversationListUiState,
     onQueryChange: (String) -> Unit,
+    onFilterChange: (ConversationFilter) -> Unit,
     onOpen: (String) -> Unit,
     onTogglePin: (String) -> Unit,
     onMarkRead: (String) -> Unit,
@@ -63,180 +46,148 @@ fun ConversationListScreen(
     modifier: Modifier = Modifier,
 ) {
     val c = TgTheme.colors
-    var searchOpen by remember { mutableStateOf(false) }
-    // 长按选中的会话（TG DialogsActivity 的长按上下文菜单）。
-    var actionTarget by remember { mutableStateOf<org.example.qqbotchat.core.Conversation?>(null) }
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .background(c.background)
-            // 顶栏自绘，需要自己避让状态栏。
-            .statusBarsPadding()
-            .navigationBarsPadding(),
+    var searchOpen by rememberSaveable { mutableStateOf(false) }
+    var actionTarget by remember { mutableStateOf<Conversation?>(null) }
+    var deleteTarget by remember { mutableStateOf<Conversation?>(null) }
+    var pickerOpen by rememberSaveable { mutableStateOf(false) }
+    val drawer = rememberDrawerState(DrawerValue.Closed)
+    val scope = rememberCoroutineScope()
+    val all = state.conversations + state.archivedConversations
+    val source = if (state.showingArchived) state.archivedConversations
+        else if (state.query.isNotBlank()) all else state.conversations
+    val shown = remember(source, state.query, state.filter, state.showingArchived) {
+        filterConversations(source, state.query, if (state.showingArchived) ConversationFilter.ALL else state.filter)
+    }
+    BackHandler(searchOpen || state.showingArchived) {
+        if (searchOpen) { searchOpen = false; onQueryChange("") } else onToggleArchivedView()
+    }
+    ModalNavigationDrawer(
+        drawerState = drawer,
+        drawerContent = {
+            ModalDrawerSheet(drawerContainerColor = c.surface) {
+                Column(Modifier.fillMaxWidth().background(c.primary).padding(24.dp)) {
+                    TgAvatar(stringResource(R.string.bot_account), null, 64.dp)
+                    Spacer(Modifier.height(18.dp))
+                    Text(stringResource(if (state.demoMode) R.string.demo_mode else R.string.bot_account),
+                        color = c.unreadText, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
+                    Text(stringResource(if (state.demoMode) R.string.demo_hint else R.string.bot_account_hint),
+                        color = c.unreadText.copy(alpha = .8f), fontSize = 13.sp)
+                }
+                Spacer(Modifier.height(12.dp))
+                NavigationDrawerItem(label = { Text(stringResource(R.string.chats)) }, selected = !state.showingArchived,
+                    icon = { Icon(painterResource(R.drawable.ic_chat), null) }, onClick = {
+                        scope.launch { drawer.close() }; if (state.showingArchived) onToggleArchivedView()
+                    })
+                NavigationDrawerItem(label = { Text(stringResource(R.string.archived_chats)) }, selected = state.showingArchived,
+                    icon = { Icon(painterResource(R.drawable.ic_archive), null) }, onClick = {
+                        scope.launch { drawer.close() }; if (!state.showingArchived) onToggleArchivedView()
+                    })
+                NavigationDrawerItem(label = { Text(stringResource(R.string.settings)) }, selected = false,
+                    icon = { Icon(painterResource(R.drawable.ic_settings), null) }, onClick = {
+                        scope.launch { drawer.close() }; onSettings()
+                    })
+            }
+        },
     ) {
-        // 自绘 ActionBar（避免 material3 TopAppBar 的 experimental 依赖），对应 TG ActionBar。
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(TgDimens.ActionBarHeight)
-                .background(c.actionBar)
-                .padding(horizontal = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = "QQBot Chat",
-                fontSize = 18.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = c.actionBarTitle,
-                modifier = Modifier.weight(1f),
-            )
-            IconButton(onClick = { searchOpen = !searchOpen }) {
-                Icon(painterResource(R.drawable.ic_search), "搜索", tint = c.icon)
-            }
-            IconButton(onClick = onSettings) {
-                Icon(painterResource(R.drawable.ic_settings), "设置", tint = c.icon)
-            }
-        }
-
-        if (searchOpen) {
-            OutlinedTextField(
-                value = state.query,
-                onValueChange = onQueryChange,
-                placeholder = { Text("搜索会话…") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
-                shape = RoundedCornerShape(24.dp),
-            )
-        }
-
-        if (state.conversations.isEmpty()) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text(
-                    text = if (state.query.isBlank()) "暂无会话，连接网关后消息会显示在这里" else "没有找到相关会话",
-                    color = c.subtitle,
-                    fontSize = TgDimens.MessageTextSize,
-                )
-            }
-        } else {
-            val shown = if (state.showingArchived) state.archivedConversations else state.conversations
-            LazyColumn(modifier = Modifier.fillMaxSize()) {
-                // TG DialogsActivity：普通列表顶部有「已归档」入口行。
-                if (!state.showingArchived && state.archivedConversations.isNotEmpty()) {
-                    item(key = "archived-row") {
-                        ArchivedRow(
-                            count = state.archivedConversations.size,
-                            onClick = onToggleArchivedView,
-                        )
+        Box(modifier.fillMaxSize().background(c.surface).statusBarsPadding().navigationBarsPadding()) {
+            Column(Modifier.fillMaxSize()) {
+                Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(horizontal = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = {
+                        when {
+                            searchOpen -> { searchOpen = false; onQueryChange("") }
+                            state.showingArchived -> onToggleArchivedView()
+                            else -> scope.launch { drawer.open() }
+                        }
+                    }) {
+                        Icon(painterResource(if (state.showingArchived || searchOpen) R.drawable.ic_back else R.drawable.ic_menu),
+                            stringResource(if (state.showingArchived || searchOpen) R.string.back else R.string.menu), tint = c.icon)
                     }
-                }
-                if (state.showingArchived) {
-                    item(key = "back-row") {
-                        ArchivedRow(count = shown.size, onClick = onToggleArchivedView, back = true)
-                    }
-                }
-                if (shown.isEmpty()) {
-                    item(key = "empty") {
-                        Box(
-                            Modifier.fillMaxWidth().padding(24.dp),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Text(
-                                text = "暂无已归档会话",
-                                color = c.subtitle,
-                                fontSize = TgDimens.MessageTextSize,
-                            )
+                    if (searchOpen) {
+                        ChatSearchField(state.query, onQueryChange, stringResource(R.string.search_chats),
+                            onClose = { searchOpen = false; onQueryChange("") }, modifier = Modifier.weight(1f))
+                    } else {
+                        Column(Modifier.weight(1f).padding(start = 8.dp)) {
+                            Text(stringResource(if (state.showingArchived) R.string.archived_chats else R.string.app_name),
+                                fontSize = 20.sp, fontWeight = FontWeight.SemiBold, color = c.name)
+                            Text(if (state.demoMode) stringResource(R.string.demo_hint) else state.connectionStatus,
+                                fontSize = 12.sp, color = c.subtitle, maxLines = 1)
+                        }
+                        IconButton(onClick = { searchOpen = true }) {
+                            Icon(painterResource(R.drawable.ic_search), stringResource(R.string.search), tint = c.icon)
                         }
                     }
                 }
-                items(shown, key = { it.id }) { conversation ->
-                    DialogCell(
-                        conversation = conversation,
-                        onClick = { onOpen(conversation.id) },
-                        onTogglePin = { onTogglePin(conversation.id) },
-                        onLongClick = { actionTarget = conversation },
+                if (!state.showingArchived) {
+                    val filters = ConversationFilter.entries
+                    val labels = listOf(R.string.all_chats, R.string.unread_chats, R.string.private_chats,
+                        R.string.group_chats, R.string.channels)
+                    ScrollableTabRow(selectedTabIndex = filters.indexOf(state.filter), edgePadding = 8.dp,
+                        containerColor = c.surface, contentColor = c.primary,
+                        divider = { HorizontalDivider(color = c.divider.copy(alpha = .5f), thickness = .5.dp) }) {
+                        filters.forEachIndexed { index, filter ->
+                            Tab(selected = state.filter == filter, onClick = { onFilterChange(filter) },
+                                text = { Text(stringResource(labels[index]), fontWeight = FontWeight.SemiBold) },
+                                selectedContentColor = c.primary, unselectedContentColor = c.subtitle)
+                        }
+                    }
+                }
+                if (shown.isEmpty() && (state.showingArchived || state.archivedConversations.isEmpty() ||
+                            state.query.isNotBlank() || state.filter != ConversationFilter.ALL)) {
+                    ChatEmptyState(
+                        title = stringResource(if (all.isEmpty()) R.string.empty_chats_title else R.string.empty_filter_title),
+                        body = stringResource(when {
+                            state.showingArchived -> R.string.empty_archive_body
+                            all.isEmpty() -> R.string.empty_chats_body
+                            else -> R.string.empty_filter_body
+                        }), modifier = Modifier.fillMaxSize(),
                     )
+                } else {
+                    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 88.dp)) {
+                        if (!state.showingArchived && state.query.isBlank() && state.filter == ConversationFilter.ALL &&
+                            state.archivedConversations.isNotEmpty()) {
+                            item(key = "archive", contentType = "archive") {
+                                Row(Modifier.fillMaxWidth().clickable(onClick = onToggleArchivedView)
+                                    .padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Box(Modifier.size(52.dp).clip(CircleShape).background(c.unreadBadgeMuted), contentAlignment = Alignment.Center) {
+                                        Icon(painterResource(R.drawable.ic_archive), null, tint = c.unreadText)
+                                    }
+                                    Column(Modifier.padding(start = 12.dp).weight(1f)) {
+                                        Text(stringResource(R.string.archived_chats), color = c.name, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
+                                        Text(stringResource(R.string.archived_count, state.archivedConversations.size), color = c.subtitle, fontSize = 14.sp)
+                                    }
+                                }
+                            }
+                        }
+                        items(shown, key = { it.id }, contentType = { "conversation" }) { conversation ->
+                            DialogCell(conversation, onClick = { onOpen(conversation.id) },
+                                onTogglePin = { onTogglePin(conversation.id) }, onLongClick = { actionTarget = conversation },
+                                modifier = Modifier.animateItem(fadeInSpec = TgMotion.content(),
+                                    placementSpec = TgMotion.content(), fadeOutSpec = TgMotion.content()))
+                        }
+                    }
                 }
             }
-        }
-    }
-
-    // 长按会话弹出的操作面板：标记已读 / 置顶 / 静音 / 归档 / 删除。
-    actionTarget?.let { conv ->
-        ConversationActionSheet(
-            conversation = conv,
-            onDismiss = { actionTarget = null },
-            onMarkRead = {
-                onMarkRead(conv.id)
-                actionTarget = null
-            },
-            onTogglePin = {
-                onTogglePin(conv.id)
-                actionTarget = null
-            },
-            onToggleMute = {
-                onToggleMute(conv.id)
-                actionTarget = null
-            },
-            onToggleArchive = {
-                onToggleArchive(conv.id)
-                actionTarget = null
-            },
-            onDelete = {
-                onDelete(conv.id)
-                actionTarget = null
-            },
-        )
-    }
-}
-
-/**
- * 「已归档」入口行，对应 TG DialogsActivity 的 archived row
- * （图标 + 文案 + 数量，行高 70dp，分隔线左缩进 72dp）。
- */
-@Composable
-private fun ArchivedRow(count: Int, onClick: () -> Unit, back: Boolean = false) {
-    val c = TgTheme.colors
-    Column(modifier = Modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(TgDimens.ListItemHeight)
-                .clickable(onClick = onClick)
-                .padding(end = TgDimens.TimeRightPadding),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Spacer(Modifier.width(TgDimens.CellHorizontalPadding))
-            Box(
-                modifier = Modifier
-                    .size(TgDimens.AvatarSize)
-                    .clip(RoundedCornerShape(26.dp))
-                    .background(c.primary.copy(alpha = 0.15f)),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(text = if (back) "←" else "▣", fontSize = 22.sp, color = c.primary)
-            }
-            Spacer(
-                Modifier.width(
-                    TgDimens.NameLeftTwoLine - TgDimens.CellHorizontalPadding - TgDimens.AvatarSize,
-                ),
-            )
-            Text(
-                text = if (back) "返回聊天列表" else "已归档",
-                fontSize = TgDimens.NameSize,
-                fontWeight = FontWeight.SemiBold,
-                color = c.name,
-                modifier = Modifier.weight(1f),
-            )
-            if (!back) {
-                Text(text = count.toString(), fontSize = TgDimens.ListTimeSize, color = c.time)
+            FloatingActionButton(onClick = { pickerOpen = true }, containerColor = c.primary, contentColor = c.unreadText,
+                shape = CircleShape, modifier = Modifier.align(Alignment.BottomEnd).padding(20.dp)) {
+                Icon(painterResource(R.drawable.ic_edit), stringResource(R.string.new_message))
             }
         }
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(start = TgDimens.DividerStartPadding)
-                .height(TgDimens.DividerThickness)
-                .background(c.divider),
-        )
     }
+    actionTarget?.let { conversation ->
+        ConversationActionSheet(conversation, onDismiss = { actionTarget = null },
+            onMarkRead = { onMarkRead(conversation.id); actionTarget = null },
+            onTogglePin = { onTogglePin(conversation.id); actionTarget = null },
+            onToggleMute = { onToggleMute(conversation.id); actionTarget = null },
+            onToggleArchive = { onToggleArchive(conversation.id); actionTarget = null },
+            onDelete = { deleteTarget = conversation; actionTarget = null })
+    }
+    deleteTarget?.let { conversation ->
+        AlertDialog(onDismissRequest = { deleteTarget = null }, title = { Text(stringResource(R.string.delete_chat)) },
+            text = { Text(stringResource(R.string.delete_chat_confirm, conversation.displayName)) },
+            confirmButton = { TextButton(onClick = { onDelete(conversation.id); deleteTarget = null }) { Text(stringResource(R.string.delete), color = c.error) } },
+            dismissButton = { TextButton(onClick = { deleteTarget = null }) { Text(stringResource(R.string.cancel)) } })
+    }
+    if (pickerOpen) ConversationPicker(all, stringResource(R.string.new_message), stringResource(R.string.new_message_hint),
+        onDismiss = { pickerOpen = false }, onSelect = { pickerOpen = false; onOpen(it.id) })
 }

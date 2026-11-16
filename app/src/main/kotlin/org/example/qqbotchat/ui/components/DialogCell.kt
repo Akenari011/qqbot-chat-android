@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -33,6 +34,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -56,9 +58,9 @@ fun DialogCell(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(TgDimens.ListItemHeight)                 // 两行 70dp
+                .heightIn(min = TgDimens.ListItemHeight)
                 .combinedClickable(onClick = onClick, onLongClick = onLongClick)
-                .padding(end = TgDimens.TimeRightPadding),       // 时间右 15dp
+                .padding(end = TgDimens.TimeRightPadding, top = 10.dp, bottom = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Spacer(Modifier.width(TgDimens.CellHorizontalPadding))
@@ -92,8 +94,13 @@ fun DialogCell(
                             painter = painterResource(R.drawable.ic_pin),
                             contentDescription = "置顶",
                             tint = c.pinnedIcon,                 // chats_pinnedIcon #FF919294
-                            modifier = Modifier.size(14.dp).clickable(onClick = onTogglePin),
+                            modifier = Modifier.size(14.dp),
                         )
+                        Spacer(Modifier.width(4.dp))
+                    }
+                    if (conversation.muted) {
+                        Icon(painterResource(R.drawable.ic_mute), stringResource(R.string.muted),
+                            tint = c.time, modifier = Modifier.size(14.dp))
                         Spacer(Modifier.width(4.dp))
                     }
                     Text(
@@ -110,9 +117,10 @@ fun DialogCell(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
-                        text = conversation.lastText.ifEmpty { "暂无消息" },
+                        text = if (conversation.draft.isNotBlank()) stringResource(R.string.draft_prefix, conversation.draft)
+                            else conversation.lastText.ifEmpty { stringResource(R.string.no_messages) },
                         fontSize = TgDimens.SubtitleSize,        // 16sp
-                        color = c.subtitle,                      // chats_message #FF75787A
+                        color = if (conversation.draft.isNotBlank()) c.draft else c.subtitle,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f),

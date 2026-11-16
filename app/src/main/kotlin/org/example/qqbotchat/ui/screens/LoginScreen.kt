@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -82,7 +83,7 @@ fun LoginScreen(
             onValueChange = onAppIdChange,
             label = { Text("AppID") },
             singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.widthIn(max = 480.dp).fillMaxWidth(),
             shape = RoundedCornerShape(12.dp),
         )
         Spacer(Modifier.height(12.dp))
@@ -93,14 +94,14 @@ fun LoginScreen(
             singleLine = true,
             visualTransformation = PasswordVisualTransformation(),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.widthIn(max = 480.dp).fillMaxWidth(),
             shape = RoundedCornerShape(12.dp),
         )
         Spacer(Modifier.height(24.dp))
         Button(
             onClick = onConnect,
             enabled = !state.connecting,
-            modifier = Modifier.fillMaxWidth().height(TgDimens.ComposerHeight),
+            modifier = Modifier.widthIn(max = 480.dp).fillMaxWidth().height(TgDimens.ComposerHeight),
             shape = RoundedCornerShape(12.dp),
             colors = ButtonDefaults.buttonColors(containerColor = c.primary),
         ) {
@@ -111,7 +112,7 @@ fun LoginScreen(
         Button(
             onClick = onDemo,
             enabled = !state.connecting,
-            modifier = Modifier.fillMaxWidth().height(44.dp),
+            modifier = Modifier.widthIn(max = 480.dp).fillMaxWidth().height(44.dp),
             shape = RoundedCornerShape(12.dp),
             colors = ButtonDefaults.buttonColors(
                 containerColor = c.surface,

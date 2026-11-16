@@ -1,4 +1,22 @@
-# 构建与测试环境（服务器本地，不走 GitHub Actions）
+# 构建与测试环境
+
+## 本地构建（推荐）
+
+需要 JDK 17、Android SDK platform 35、build-tools 35.0.0 / 34.0.0 与 platform-tools。设置 `JAVA_HOME` 和 `ANDROID_HOME`，或在不入库的 `local.properties` 中设置 `sdk.dir`。Wrapper 首次使用会下载并校验 Gradle 8.13；无需单独安装 Gradle。
+
+```powershell
+# Windows PowerShell；将环境变量指向本机的 JDK 17 和 SDK
+.\gradlew.bat :core:test :app:testDebugUnitTest :app:assembleDebug :app:assembleRelease :app:lintDebug
+.\gradlew.bat :app:connectedDebugAndroidTest
+```
+
+macOS / Linux 用 `./gradlew` 执行相同任务。设备测试需要已连接且允许调试的 Android 设备或模拟器；无设备时可以先运行前一条命令。Robolectric 首次运行会下载 Android 测试运行时。
+
+APK 位于 `app/build/outputs/apk/debug/` 和 `app/build/outputs/apk/release/`。测试报告位于 `core/build/reports/tests/test/`、`app/build/reports/tests/testDebugUnitTest/`、`app/build/reports/androidTests/connected/debug/`；Lint 报告为 `app/build/reports/lint-results-debug.html`。
+
+2026-11-16 重构在 Windows / JDK 17 下完成本地构建，并在独立 Android 12 模拟器运行设备测试。没有使用下述远程服务器，也未取得正式签名密钥。
+
+以下保留原有服务器构建记录，供维护者继续使用既有脚本。
 
 ## 主机
 

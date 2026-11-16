@@ -96,7 +96,7 @@ class ConversationStore(private val gson: Gson = Gson()) {
         incomingSeq: Int? = null
     ): Boolean {
         val conversation = getOrCreate(target, scene, name)
-        if (conversation.messages.any { it.id == message.id }) return false
+        if (conversation.messages.any { it.id == message.id || it.serverId == message.id }) return false
         conversation.messages.add(message)
         conversation.lastText = message.summary
         conversation.lastTimestamp = message.timestamp
@@ -115,7 +115,12 @@ class ConversationStore(private val gson: Gson = Gson()) {
     @Synchronized
     fun onIncoming(event: IncomingEvent, markUnread: Boolean = true): Boolean {
         val name = defaultName(event.scene, event.target, event.message.authorName)
-        return append(event.target, event.scene, event.message, name, markUnread)
+        val quoted = conversations[event.target]?.messages?.firstOrNull {
+            it.id == event.message.quotedId || (it.serverId != null && it.serverId == event.message.quotedId)
+        }
+        val message = if (event.message.quotedText == null && quoted != null)
+            event.message.copy(quotedText = quoted.summary) else event.message
+        return append(event.target, event.scene, message, name, markUnread)
     }
 
     /**
@@ -235,6 +240,51 @@ class ConversationStore(private val gson: Gson = Gson()) {
         return true
     }
 
+    /** A detached snapshot prevents mutations from silently changing an emitted UI state. */
+    @Synchronized
+    fun snapshot(target: String): Conversation? = conversations[target]?.let {
+        it.copy(messages = it.messages.toMutableList())
+    }
+
+    @Synchronized
+    fun setDraft(target: String, text: String, replyId: String?): Boolean = update(target) {
+        it.draft = text
+        it.draftReplyId = replyId
+    }
+
+    @Synchronized
+    fun updateMessage(target: String, id: String, transform: (ChatMessage) -> ChatMessage): Boolean {
+        val conversation = conversations[target] ?: return false
+        val index = conversation.messages.indexOfFirst { it.id == id }
+        if (index < 0) return false
+        conversation.messages[index] = transform(conversation.messages[index])
+        refreshPreview(conversation)
+        return true
+    }
+
+    @Synchronized
+    fun deleteMessage(target: String, id: String): Boolean {
+        val conversation = conversations[target] ?: return false
+        val removed = conversation.messages.removeAll { it.id == id }
+        if (conversation.draftReplyId == id) conversation.draftReplyId = null
+        refreshPreview(conversation)
+        return removed
+    }
+
+    private fun refreshPreview(conversation: Conversation) {
+        val last = conversation.messages.lastOrNull()
+        conversation.lastText = if (last?.status == "recalled") "消息已撤回" else last?.summary.orEmpty()
+        conversation.lastTimestamp = last?.timestamp.orEmpty()
+    }
+
+    /** Reserve a sequence before the network call; a new incoming reply window cannot be overwritten. */
+    @Synchronized
+    fun reserveReply(target: String): Conversation? {
+        val snapshot = snapshot(target) ?: return null
+        conversations.getValue(target).replySeq++
+        return snapshot
+    }
+
     /** 删除会话，返回是否原本存在。 */
     @Synchronized
     fun deleteConversation(target: String): Boolean = conversations.remove(target) != null
@@ -255,6 +305,7 @@ class ConversationStore(private val gson: Gson = Gson()) {
     @Synchronized
     fun allConversations(includeArchived: Boolean = true): List<Conversation> {
         val list = conversations.values.filter { includeArchived || !it.archived }
+            .map { it.copy(messages = it.messages.toMutableList()) }
         return list.sortedWith(
             compareByDescending<Conversation> { it.pinned }
                 .thenByDescending { MessageParser.epoch(it.lastTimestamp) }
@@ -424,6 +475,8 @@ class ConversationStore(private val gson: Gson = Gson()) {
         addProperty("muted", conversation.muted)
         addNullable("remark", conversation.remark)
         addNullable("avatarPath", conversation.avatarPath)
+        addProperty("draft", conversation.draft)
+        addNullable("draftReplyId", conversation.draftReplyId)
         add("messages", JsonArray().apply {
             conversation.messages.forEach { add(messageToJson(it)) }
         })
@@ -448,6 +501,8 @@ class ConversationStore(private val gson: Gson = Gson()) {
         conversation.muted = boolOf(obj, "muted") ?: false
         conversation.remark = str(obj, "remark")
         conversation.avatarPath = str(obj, "avatarPath")
+        conversation.draft = str(obj, "draft") ?: ""
+        conversation.draftReplyId = str(obj, "draftReplyId")
         val array = arrOf(obj, "messages") ?: JsonArray()
         val seen = HashSet<String>()
         for (element in array) {
@@ -468,6 +523,9 @@ class ConversationStore(private val gson: Gson = Gson()) {
         addProperty("authorOpenId", message.authorOpenId)
         addNullable("authorAvatar", message.authorAvatar)
         addNullable("imageUrl", message.imageUrl)
+        addNullable("localImage", message.localImage)
+        addNullable("serverId", message.serverId)
+        addNullable("fileUrl", message.fileUrl)
         addNullable("videoUrl", message.videoUrl)
         addNullable("audioUrl", message.audioUrl)
         addNullable("fileName", message.fileName)
@@ -512,6 +570,9 @@ class ConversationStore(private val gson: Gson = Gson()) {
             authorOpenId = str(obj, "authorOpenId") ?: "",
             authorAvatar = str(obj, "authorAvatar"),
             imageUrl = str(obj, "imageUrl"),
+            localImage = str(obj, "localImage"),
+            serverId = str(obj, "serverId"),
+            fileUrl = str(obj, "fileUrl"),
             videoUrl = str(obj, "videoUrl"),
             audioUrl = str(obj, "audioUrl"),
             fileName = str(obj, "fileName"),
