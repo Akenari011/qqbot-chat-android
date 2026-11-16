@@ -55,7 +55,6 @@ import coil.compose.AsyncImage
 import org.example.qqbotchat.core.ChatMessage
 import org.example.qqbotchat.ui.theme.TgDimens
 import org.example.qqbotchat.ui.theme.TgTheme
-import org.example.qqbotchat.util.clockTime
 
 // ---- TG 常量对应的固定色值（只使用 TgTheme.colors 已列出的字段）----
 /** ThemeColors.java:436 chat_mediaTimeText = 0xFFFFFFFF：媒体上的时间/信息文字统一用白色。 */
@@ -138,8 +137,7 @@ private fun ImageMedia(
     val resolvedUrl = localPath?.takeIf { it.isNotBlank() } ?: normalizeUrl(url)
     // 本地待发送媒体用 "local" 占位（ViewModel.sendMedia 落库时写入），
     // 不应交给 Coil 走网络加载而误报失败；直接显示「图片 · 发送中」占位。
-    val isLocalPlaceholder = url == "local" || (!resolvedUrl.startsWith("http") &&
-        !resolvedUrl.startsWith("content") && !resolvedUrl.startsWith("file"))
+    val isLocalPlaceholder = localPath.isNullOrBlank() && url == "local"
     // 0=加载中、1=成功、2=失败：由 Coil 状态回调切换占位与失败文案。
     var loadState by remember(url) { mutableStateOf(0) }
     val imageBounds = Modifier
@@ -174,7 +172,7 @@ private fun ImageMedia(
             AsyncImage(
                 model = resolvedUrl,
                 contentDescription = "图片",
-                contentScale = ContentScale.FillBounds,
+                contentScale = ContentScale.Crop,
                 clipToBounds = true,
                 onLoading = { loadState = 0 },
                 onSuccess = { loadState = 1 },
@@ -202,13 +200,6 @@ private fun ImageMedia(
             }
         }
         // chat_mediaTimeText 白色时间 + 双勾，压在图片右下角（ChatMessageCell.java:12268）。
-        MediaMetaRow(
-            message = message,
-            outgoing = outgoing,
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(6.dp),
-        )
     }
 }
 
@@ -242,13 +233,6 @@ private fun VideoMedia(
             Text(text = "视频", fontSize = TgDimens.MessageTimeSize, color = OnMedia)
         }
         // 时间戳放左下角，避免与右下「视频」标签重叠。
-        MediaMetaRow(
-            message = message,
-            outgoing = outgoing,
-            modifier = Modifier
-                .align(Alignment.BottomStart)
-                .padding(6.dp),
-        )
     }
 }
 
@@ -297,11 +281,6 @@ private fun AudioMedia(
         }
         Spacer(Modifier.height(6.dp))
         // 时间戳在内容下方右对齐（chat_mediaTimeText 白色）。
-        MediaMetaRow(
-            message = message,
-            outgoing = outgoing,
-            modifier = Modifier.align(Alignment.End),
-        )
     }
 }
 
@@ -319,7 +298,7 @@ private fun FileMedia(
             .clip(RoundedCornerShape(MediaCorner))
             .clipToBounds()
             .background(MediaDarkSurface)
-            .clickable { onClickFile(name) }
+            .clickable { onClickFile(message.fileUrl.orEmpty()) }
             .padding(horizontal = 10.dp, vertical = 8.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -363,45 +342,6 @@ private fun FileMedia(
             }
         }
         Spacer(Modifier.height(6.dp))
-        MediaMetaRow(
-            message = message,
-            outgoing = outgoing,
-            modifier = Modifier.align(Alignment.End),
-        )
-    }
-}
-
-/**
- * 媒体时间戳：12sp（Theme.java:8483 chat_infoPaint dp(12) / :8506 chat_timePaint dp(12)），
- * 白色 chat_mediaTimeText + 半透明暗底衬；发出时追加 chats_sentCheck 双勾。
- */
-@Composable
-private fun MediaMetaRow(
-    message: ChatMessage,
-    outgoing: Boolean,
-    modifier: Modifier = Modifier,
-) {
-    Row(
-        modifier = modifier
-            .clip(RoundedCornerShape(10.dp))
-            .background(MediaTimeScrim)
-            .padding(horizontal = 6.dp, vertical = 2.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = clockTime(message.timestamp),
-            fontSize = TgDimens.MessageTimeSize,
-            color = OnMedia,
-        )
-        if (outgoing) {
-            Spacer(Modifier.width(3.dp))
-            Text(
-                text = "✓✓",
-                fontSize = TgDimens.MessageTimeSize,
-                fontWeight = FontWeight.Bold,
-                color = TgTheme.colors.sentCheck,
-            )
-        }
     }
 }
 

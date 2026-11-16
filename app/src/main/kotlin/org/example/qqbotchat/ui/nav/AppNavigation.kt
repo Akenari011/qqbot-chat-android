@@ -3,6 +3,11 @@
 // 来自 TG 的常量：无（导航不含视觉常量）；各屏幕的色值/尺寸见 ui/theme/Color.kt 与 Dimens.kt。
 package org.example.qqbotchat.ui.nav
 
+import android.net.Uri
+import androidx.compose.animation.*
+import androidx.lifecycle.compose.LifecycleResumeEffect
+import org.example.qqbotchat.ui.theme.TgMotion
+
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.platform.LocalClipboardManager
@@ -26,7 +31,7 @@ sealed class Route(val route: String) {
     data object Login : Route("login")
     data object Conversations : Route("conversations")
     data object Chat : Route("chat/{conversationId}") {
-        fun of(id: String): String = "chat/" + id
+        fun of(id: String): String = "chat/" + Uri.encode(id)
     }
     data object Settings : Route("settings")
 }
@@ -38,6 +43,10 @@ fun AppNavigation(viewModel: ChatViewModel, modifier: Modifier = Modifier) {
         navController = navController,
         startDestination = Route.Login.route,
         modifier = modifier,
+        enterTransition = { slideInHorizontally(TgMotion.navigation()) { it / 5 } + fadeIn(TgMotion.navigation()) },
+        exitTransition = { fadeOut(TgMotion.content()) },
+        popEnterTransition = { fadeIn(TgMotion.navigation()) },
+        popExitTransition = { slideOutHorizontally(TgMotion.navigation()) { it / 5 } + fadeOut(TgMotion.navigation()) },
     ) {
         composable(Route.Login.route) {
             val state by viewModel.login.collectAsStateWithLifecycle()
@@ -62,9 +71,9 @@ fun AppNavigation(viewModel: ChatViewModel, modifier: Modifier = Modifier) {
             ConversationListScreen(
                 state = state,
                 onQueryChange = viewModel::onQueryChange,
+                onFilterChange = viewModel::setFilter,
                 onOpen = { id ->
-                    viewModel.openConversation(id)
-                    navController.navigate(Route.Chat.of(id))
+                    navController.navigate(Route.Chat.of(id)) { launchSingleTop = true }
                 },
                 onTogglePin = viewModel::togglePin,
                 onMarkRead = viewModel::markRead,
@@ -82,6 +91,10 @@ fun AppNavigation(viewModel: ChatViewModel, modifier: Modifier = Modifier) {
         ) { entry ->
             val id = entry.arguments?.getString("conversationId") ?: ""
             LaunchedEffect(id) { viewModel.openConversation(id) }
+            LifecycleResumeEffect(id) {
+                viewModel.openConversation(id)
+                onPauseOrDispose { viewModel.closeConversation(id) }
+            }
             val state by viewModel.chat.collectAsStateWithLifecycle()
             val clipboard = LocalClipboardManager.current
             val uriHandler = LocalUriHandler.current
@@ -97,12 +110,11 @@ fun AppNavigation(viewModel: ChatViewModel, modifier: Modifier = Modifier) {
                 onShowActions = viewModel::showActions,
                 onDismissActions = viewModel::dismissActions,
                 onCopy = { text -> clipboard.setText(AnnotatedString(text)) },
-                onForward = { messageId ->
-                    // 转发到列表里第一个非当前会话（简化版，后续可加目标选择器）。
-                    val others = viewModel.conversations.value.conversations
-                        .filter { it.id != id }
-                    others.firstOrNull()?.let { viewModel.forward(messageId, it.id) }
-                },
+                onForward = viewModel::showForwardPicker,
+                onForwardConfirm = viewModel::forward,
+                onDismissForward = viewModel::dismissForwardPicker,
+                onRetry = viewModel::retry,
+                onDismissNotice = viewModel::dismissChatNotice,
                 onReact = { messageId, emoji -> viewModel.react(messageId, emoji) },
                 onDelete = viewModel::deleteMessage,
                 onChannelAction = viewModel::runChannelAction,

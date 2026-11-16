@@ -19,8 +19,13 @@ data class ChatMessage(
     val duration: Double? = null,
     val buttons: List<String> = emptyList(),
     val reactions: Map<String, Int> = emptyMap(),
-    val status: String = "sent"
+    val status: String = "sent",
+    /** Remote identity is separate from the stable local list key. */
+    val serverId: String? = null,
+    val fileUrl: String? = null,
 ) {
+    val remoteId: String? get() = serverId ?: id.takeUnless { fromBot }
+    val isText: Boolean get() = !isImage && !isVideo && !isAudio && !isFile
     val isImage: Boolean get() = imageUrl != null
     val isVideo: Boolean get() = videoUrl != null
     val isAudio: Boolean get() = audioUrl != null
@@ -49,7 +54,9 @@ data class Conversation(
     var archived: Boolean = false,
     var muted: Boolean = false,
     var remark: String? = null,
-    var avatarPath: String? = null
+    var avatarPath: String? = null,
+    var draft: String = "",
+    var draftReplyId: String? = null,
 ) {
     val displayName: String get() = remark?.takeIf { it.isNotBlank() } ?: name
 }

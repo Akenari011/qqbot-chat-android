@@ -31,7 +31,21 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.ClickableText
 import androidx.compose.material3.Text
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.res.stringResource
+import org.example.qqbotchat.R
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.text.BasicText
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.onLongClick
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -78,6 +92,7 @@ private class SheetAction(
  * 用 Dialog 自绘卡片，规避 ModalBottomSheet 的 ExperimentalMaterial3Api 编译风险。
  * 回调只负责派发事件，是否关闭面板由调用方在回调里决定。
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MessageActionSheet(
     message: ChatMessage,
@@ -88,26 +103,40 @@ fun MessageActionSheet(
     onRecall: () -> Unit,
     onDelete: () -> Unit,
     onReact: (String) -> Unit,
+    onRetry: () -> Unit,
+    canReact: Boolean,
+    demoMode: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     val c = TgTheme.colors
 
     // 撤回仅对机器人（自己发出）的消息显示；删除用 error 强调色。
+    val replyLabel = stringResource(R.string.reply)
+    val copyLabel = stringResource(R.string.copy)
+    val forwardLabel = stringResource(R.string.forward)
+    val recallLabel = stringResource(R.string.recall)
+    val deleteLabel = stringResource(R.string.delete_local)
+    val retryLabel = stringResource(R.string.retry)
     val actions = buildList {
-        add(SheetAction("↩", "回复", onReply))
-        add(SheetAction("📋", "复制", onCopy))
-        add(SheetAction("↪", "转发", onForward))
-        if (message.fromBot) add(SheetAction("↶", "撤回", onRecall))
-        add(SheetAction("🗑", "删除", onDelete, danger = true))
+        if (message.status != "recalled") {
+            add(SheetAction("↩", replyLabel, onReply))
+            if (message.text.isNotBlank()) add(SheetAction("⧉", copyLabel, onCopy))
+            if (message.isText && message.text.isNotBlank()) add(SheetAction("↪", forwardLabel, onForward))
+            if (message.fromBot && message.status == "failed" && message.isText) add(SheetAction("↻", retryLabel, onRetry))
+            if (message.fromBot && message.status in listOf("sent", "read") && (demoMode || message.remoteId != null))
+                add(SheetAction("↶", recallLabel, onRecall))
+        }
+        add(SheetAction("×", deleteLabel, onDelete, danger = true))
     }
 
-    Dialog(onDismissRequest = onDismiss) {
+    TgActionSheet(onDismiss) { close ->
         Column(
             modifier = modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(16.dp))
                 .background(c.surface)
-                .padding(vertical = 8.dp),
+                .padding(vertical = 8.dp)
+                .verticalScroll(rememberScrollState()),
         ) {
             // 顶部消息摘要：12sp 灰色、单行省略（Theme.java:8506 / chat_inTimeText）。
             Text(
@@ -121,7 +150,7 @@ fun MessageActionSheet(
             SheetDivider(c.divider)
 
             // 一排常用表情回应：点击回调 onReact(emoji)。
-            Row(
+            if (canReact && message.status != "recalled") Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 12.dp, vertical = 4.dp),
@@ -131,9 +160,9 @@ fun MessageActionSheet(
                 for (emoji in REACTION_EMOJIS) {
                     Box(
                         modifier = Modifier
-                            .size(40.dp)
+                            .size(48.dp)
                             .clip(RoundedCornerShape(20.dp))
-                            .clickable { onReact(emoji) },
+                            .clickable { close { onReact(emoji) } },
                         contentAlignment = Alignment.Center,
                     ) {
                         Text(text = emoji, fontSize = 20.sp)
@@ -148,7 +177,7 @@ fun MessageActionSheet(
                     icon = action.icon,
                     label = action.label,
                     color = if (action.danger) c.error else c.actionBarTitle,
-                    onClick = action.onClick,
+                    onClick = { close(action.onClick) },
                 )
                 if (index != actions.lastIndex) SheetDivider(c.divider)
             }
@@ -256,50 +285,36 @@ fun LinkifiedText(
     color: Color,
     fontSize: TextUnit,
     modifier: Modifier = Modifier,
+    onLongPress: () -> Unit = {},
 ) {
     val uriHandler = LocalUriHandler.current
     val linkColor = TgTheme.colors.link
-
-    // 把链接片段切成带 URL 注解的区间，链接片段着蓝色并加下划线。
-    val annotated = buildAnnotatedString {
+    val annotated = remember(text, linkColor) { buildAnnotatedString {
         var cursor = 0
         for (match in URL_REGEX.findAll(text)) {
             append(text.substring(cursor, match.range.first))
-            val full = match.value
-            val url = full.trimEnd(*URL_TRAILING_PUNCT)
-            val tail = full.substring(url.length)
+            val url = match.value.trimEnd(*URL_TRAILING_PUNCT)
             pushStringAnnotation(tag = URL_TAG, annotation = url)
-            withStyle(
-                SpanStyle(color = linkColor, textDecoration = TextDecoration.Underline),
-            ) {
-                append(url)
-            }
+            withStyle(SpanStyle(color = linkColor, textDecoration = TextDecoration.Underline)) { append(url) }
             pop()
-            if (tail.isNotEmpty()) append(tail)
+            append(match.value.substring(url.length))
             cursor = match.range.last + 1
         }
         append(text.substring(cursor))
-    }
-
-    // 普通文本使用调用方给定的 color / fontSize。
-    ClickableText(
-        text = annotated,
-        modifier = modifier,
-        style = TextStyle(color = color, fontSize = fontSize),
-        onClick = { offset ->
-            annotated
-                .getStringAnnotations(tag = URL_TAG, start = offset, end = offset)
-                .firstOrNull()
-                ?.let { annotation ->
-                    val raw = annotation.item
-                    val target = if (raw.startsWith("http", ignoreCase = true)) {
-                        raw
-                    } else {
-                        "https://$raw"
-                    }
-                    // 无浏览器可处理该 Intent 时静默忽略，避免崩溃。
+    } }
+    var layout by remember { mutableStateOf<TextLayoutResult?>(null) }
+    val currentLongPress by rememberUpdatedState(onLongPress)
+    val actionsLabel = stringResource(R.string.message_actions)
+    BasicText(text = annotated, style = TextStyle(color = color, fontSize = fontSize), onTextLayout = { layout = it },
+        modifier = modifier.semantics {
+            onLongClick(actionsLabel) { currentLongPress(); true }
+        }.pointerInput(annotated) {
+            detectTapGestures(onLongPress = { currentLongPress() }, onTap = { position ->
+                val index = layout?.getOffsetForPosition(position) ?: return@detectTapGestures
+                annotated.getStringAnnotations(URL_TAG, index, index).firstOrNull()?.let {
+                    val target = if (it.item.startsWith("http", ignoreCase = true)) it.item else "https://" + it.item
                     runCatching { uriHandler.openUri(target) }
                 }
-        },
-    )
+            })
+        })
 }

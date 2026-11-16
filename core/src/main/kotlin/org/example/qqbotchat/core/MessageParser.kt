@@ -132,6 +132,10 @@ object MessageParser {
         val isVideo = contentType.startsWith("video") || filename.endsWith(".mp4") || filename.endsWith(".mov")
         val isAudio = contentType.startsWith("audio") ||
             filename.endsWith(".silk") || filename.endsWith(".amr") || filename.endsWith(".m4a")
+        val isImage = !isVideo && !isAudio && (contentType.startsWith("image") ||
+            listOf(".jpg", ".jpeg", ".png", ".gif", ".webp").any { filename.endsWith(it) } ||
+            (contentType.isBlank() && filename.isBlank()))
+        val isFile = remote != null && !isImage && !isVideo && !isAudio
 
         val quoteRef = payload.getAsJsonObject("message_reference")
         val buttons = mutableListOf<String>()
@@ -151,7 +155,9 @@ object MessageParser {
             authorName = authorName,
             authorOpenId = memberId,
             authorAvatar = author.get("avatar")?.asString,
-            imageUrl = if (!isVideo && !isAudio) remote else null,
+            imageUrl = if (isImage) remote else null,
+            fileName = if (isFile) attachment?.get("filename")?.asString ?: "附件" else null,
+            fileUrl = if (isFile) remote else null,
             videoUrl = if (isVideo) remote else null,
             audioUrl = if (isAudio) remote else null,
             quotedId = quoteRef?.get("message_id")?.asString,

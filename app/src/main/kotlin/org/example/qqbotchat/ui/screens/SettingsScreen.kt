@@ -6,6 +6,15 @@
 package org.example.qqbotchat.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.platform.LocalContext
+import android.content.Intent
+import org.example.qqbotchat.ui.components.ChatWallpaper
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -53,6 +62,7 @@ fun SettingsScreen(
     modifier: Modifier = Modifier,
 ) {
     val c = TgTheme.colors
+    val context = LocalContext.current
     var confirmClear by remember { mutableStateOf(false) }
     var confirmLogout by remember { mutableStateOf(false) }
 
@@ -67,7 +77,7 @@ fun SettingsScreen(
         modifier = modifier
             .fillMaxSize()
             .background(c.background)
-            .statusBarsPadding(),
+            .statusBarsPadding().navigationBarsPadding().verticalScroll(rememberScrollState()),
     ) {
         Row(
             modifier = Modifier
@@ -88,24 +98,33 @@ fun SettingsScreen(
             )
         }
 
-        SectionTitle("外观")
+        Box(Modifier.fillMaxWidth().height(174.dp)) {
+            ChatWallpaper(Modifier.matchParentSize())
+            Text(stringResource(R.string.preview_incoming), color = c.inBubbleText,
+                modifier = Modifier.align(Alignment.TopStart).padding(start = 20.dp, top = 24.dp)
+                    .clip(RoundedCornerShape(16.dp)).background(c.inBubble).padding(12.dp))
+            Text(stringResource(R.string.preview_outgoing), color = c.outBubbleText,
+                modifier = Modifier.align(Alignment.BottomEnd).padding(end = 20.dp, bottom = 24.dp)
+                    .clip(RoundedCornerShape(16.dp)).background(c.outBubbleStart).padding(12.dp))
+        }
+        SectionTitle(stringResource(R.string.appearance))
         SettingRow(
-            title = "深色主题",
-            subtitle = "对应 TG Dark / Night 主题",
+            title = stringResource(R.string.dark_theme),
+            subtitle = stringResource(R.string.dark_theme_hint),
             trailing = {
                 Switch(checked = state.darkTheme, onCheckedChange = onDarkThemeChange)
             },
         )
         SettingRow(
-            title = "蓝色渐变气泡",
-            subtitle = "默认使用 TG 浅色 #FFEFFFDE；开启后使用 iOS 版 #57B2E0→#0088FF",
+            title = stringResource(R.string.blue_bubbles),
+            subtitle = stringResource(R.string.blue_bubbles_hint),
             trailing = {
                 Switch(checked = state.blueGradient, onCheckedChange = onBlueGradientChange)
             },
         )
         SettingRow(
-            title = "字体大小",
-            subtitle = "当前 " + (state.fontScale * 100).toInt() + "%（基准 16sp）",
+            title = stringResource(R.string.font_size),
+            subtitle = stringResource(R.string.font_size_value, (state.fontScale * 100).toInt()),
             trailing = {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     TextButton(onClick = { onBumpFontScale(-0.1f) }) { Text("A−") }
@@ -114,10 +133,10 @@ fun SettingsScreen(
             },
         )
 
-        SectionTitle("数据与账号")
-        SettingRow(title = "清空聊天记录", subtitle = "删除所有会话与消息") { confirmClear = true }
-        SettingRow(title = "导出日志", subtitle = "查看会话消息与网关日志") { onExportLogs() }
-        SettingRow(title = "退出登录", subtitle = "断开网关并返回登录页") { confirmLogout = true }
+        SectionTitle(stringResource(R.string.data_account))
+        SettingRow(title = "清空聊天记录", subtitle = stringResource(R.string.clear_chats_hint)) { confirmClear = true }
+        SettingRow(title = "导出日志", subtitle = stringResource(R.string.export_logs_hint)) { onExportLogs() }
+        SettingRow(title = "退出登录", subtitle = stringResource(R.string.logout_hint)) { confirmLogout = true }
 
         if (state.status.isNotBlank()) {
             Text(
@@ -167,10 +186,14 @@ fun SettingsScreen(
         AlertDialog(
             onDismissRequest = onDismissExport,
             title = { Text("日志预览") },
-            text = { Text(text, fontSize = TgDimens.MessageTimeSize) },
+            text = { Text(text, fontSize = TgDimens.MessageTimeSize, modifier = Modifier.verticalScroll(rememberScrollState())) },
             confirmButton = {
-                TextButton(onClick = onDismissExport) { Text("关闭") }
+                TextButton(onClick = {
+                    val intent = Intent(Intent.ACTION_SEND).apply { type = "text/plain"; putExtra(Intent.EXTRA_TEXT, text) }
+                    context.startActivity(Intent.createChooser(intent, null))
+                }) { Text(stringResource(R.string.share)) }
             },
+            dismissButton = { TextButton(onClick = onDismissExport) { Text(stringResource(R.string.close)) } },
         )
     }
 }

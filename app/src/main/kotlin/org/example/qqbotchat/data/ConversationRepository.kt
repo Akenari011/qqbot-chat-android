@@ -6,12 +6,13 @@
 // 设计要点：
 //   - 存 filesDir/conversations.json，写入用「临时文件 + 原子重命名」，避免写一半掉电损坏数据；
 //   - 读取失败（损坏 / 版本过新）时把坏文件备份为 corrupt 后缀并返回 0，保证 App 仍能启动；
-//   - 只持久化用户真实会话，演示数据在无持久化数据时注入。
+//   - 只持久化用户真实会话，演示数据由 ViewModel 在独立内存中管理。
 package org.example.qqbotchat.data
 
 import android.content.Context
 import org.example.qqbotchat.core.ConversationStore
 import java.io.File
+import android.util.AtomicFile
 
 /**
  * 会话数据的本地持久化。
@@ -33,11 +34,12 @@ class ConversationRepository(context: Context) {
      *
      * 文件不存在返回 0；文件损坏时备份为 corrupt 后缀后返回 0（不抛异常）。
      */
+    @Synchronized
     fun load(store: ConversationStore): Int {
         val f = file
-        if (!f.exists() || f.length() == 0L) return 0
+        if (!f.exists() && !File(f.path + ".bak").exists()) return 0
         return try {
-            store.loadJson(f.readText())
+            store.loadJson(AtomicFile(f).openRead().bufferedReader().use { it.readText() })
         } catch (e: Exception) {
             // 数据损坏：备份后放弃恢复，避免每次启动都失败。
             runCatching {
@@ -52,19 +54,26 @@ class ConversationRepository(context: Context) {
      *
      * @return 是否写入成功。
      */
-    fun save(store: ConversationStore): Boolean = try {
-        val json = store.toJson()
-        tmpFile.writeText(json)
-        // 原子替换：先写临时文件，再覆盖正式文件。
-        if (file.exists()) file.delete()
-        tmpFile.renameTo(file)
-    } catch (e: Exception) {
-        false
+    fun save(store: ConversationStore): Boolean = saveJson(store.toJson())
+
+    @Synchronized
+    fun saveJson(json: String): Boolean {
+        val atomic = AtomicFile(file)
+        val output = try { atomic.startWrite() } catch (e: Exception) { return false }
+        return try {
+            output.write(json.toByteArray(Charsets.UTF_8))
+            atomic.finishWrite(output)
+            true
+        } catch (e: Exception) {
+            atomic.failWrite(output)
+            false
+        }
     }
 
     /** 删除本地持久化文件（退出登录 / 清空记录时调用）。 */
+    @Synchronized
     fun clear() {
-        runCatching { file.delete() }
+        runCatching { AtomicFile(file).delete() }
         runCatching { tmpFile.delete() }
     }
 

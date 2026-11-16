@@ -86,6 +86,8 @@ object TgIosColors {
  * outBubbleStart/outBubbleEnd 相同即为纯色气泡（默认 TG 绿）；不同则为渐变（可选 iOS 蓝主题）。
  */
 data class TgColors(
+    val wallpaper: Color,
+    val wallpaperAccent: Color,
     val actionBar: Color,
     val actionBarTitle: Color,
     val background: Color,
@@ -120,10 +122,13 @@ data class TgColors(
     val icon: Color,
     val error: Color,
     val avatarPalette: List<Color>,
+    val mediaBackdrop: Color = Color(0xFF0B111A),
 )
 
 /** 默认浅色主题：TG ThemeColors.java:20 createDefaultColors() 原值。 */
 fun lightTgColors(): TgColors = TgColors(
+    wallpaper = Color(0xFFDCE5D4),
+    wallpaperAccent = Color(0xFFC3D4BD),
     actionBar = TgDefaultColors.actionBarDefault,
     actionBarTitle = TgDefaultColors.actionBarDefaultTitle,
     background = Color(0xFFFFFFFF),
@@ -172,6 +177,8 @@ fun lightBlueTgColors(): TgColors = lightTgColors().copy(
 
 /** 暗色主题：TG Night/Dark 近似（本轮精读未给出精确暗色 key，按 ThemeColors.java 结构映射）。 */
 fun darkTgColors(): TgColors = TgColors(
+    wallpaper = Color(0xFF101C27),
+    wallpaperAccent = Color(0xFF1E3443),
     actionBar = Color(0xFF232E3C),
     actionBarTitle = Color(0xFFF2F2F2),
     background = Color(0xFF17212B),

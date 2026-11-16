@@ -35,11 +35,19 @@ import org.example.qqbotchat.runtime.stateText
 import org.example.qqbotchat.util.clockTime
 import java.time.Instant
 import java.util.Collections
+import java.util.UUID
+import kotlinx.coroutines.channels.Channel
+import org.example.qqbotchat.core.ConversationFilter
+import org.example.qqbotchat.core.MessageDelivery
+import org.example.qqbotchat.core.matchesQuery
 
 class ChatViewModel(app: Application) : AndroidViewModel(app) {
 
     // ---- :core 依赖（真实类，非占位）----
-    private val store: ConversationStore = ConversationStore()
+    private var store = ConversationStore()
+    private var sessionVersion = 0
+    private var visibleConversationId: String? = null
+    private val persistence = Channel<String>(Channel.CONFLATED)
     // 本地持久化：App 重启后恢复会话与消息（对应 TG 的 MessagesStorage）。
     private val repository: ConversationRepository = ConversationRepository(app)
     /** 演示模式：演示数据只在内存，绝不写盘。 */
@@ -64,6 +72,15 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     val settings: StateFlow<SettingsUiState> = _settings.asStateFlow()
 
     init {
+        viewModelScope.launch(Dispatchers.IO) {
+            for (json in persistence) {
+                if (!repository.saveJson(json)) withContext(Dispatchers.Main) {
+                    val message = getApplication<Application>().getString(org.example.qqbotchat.R.string.storage_write_failed)
+                    _chat.update { it.copy(error = message) }
+                    _settings.update { it.copy(status = message) }
+                }
+            }
+        }
         // 启动顺序：先尝试恢复上次的会话数据；只有本地无数据时才注入演示会话。
         // 恢复上次的外观设置（TG 用 SharedConfig 持久化同类偏好）。
         _settings.update {
@@ -78,30 +95,8 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         refreshConversations()
     }
 
-    /**
-     * 删除所有演示会话（id 以 "demo-" 开头，见 BotRuntime.demoSeed）。
-     *
-     * 真实凭证登录成功后调用，保证列表里只出现真实 QQ 会话。
-     */
-    private fun clearDemoConversations() {
-        val demoIds = store.allConversations(includeArchived = true)
-            .filter { it.id.startsWith("demo-") }
-            .map { it.id }
-        if (demoIds.isEmpty()) return
-        demoIds.forEach { store.deleteConversation(it) }
-        if (_chat.value.conversationId.startsWith("demo-")) _chat.update { ChatUiState() }
-        persist()
-    }
-
-    /**
-     * 把当前会话状态写入磁盘（内部吞掉失败，不影响 UI）。
-     *
-     * 演示模式下**不写盘**：演示数据是 UI 预览用的假会话，
-     * 一旦持久化，真实用户重启后会在列表里看到假数据。
-     */
     private fun persist() {
-        if (isDemoMode) return
-        repository.save(store)
+        if (!isDemoMode) persistence.trySend(store.toJson())
     }
 
     // ---- 登录 / 连接 ----
@@ -115,6 +110,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
 
     fun connect() = viewModelScope.launch {
         val s = _login.value
+        if (s.connecting) return@launch
         if (s.appId.isBlank() || s.appSecret.isBlank()) {
             _login.update { it.copy(status = "请填写 AppID 与 AppSecret") }
             return@launch
@@ -139,11 +135,20 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
             return@launch
         }
 
+        gateway?.close()
+        val version = ++sessionVersion
         val newGateway = GatewayClient(
             newApi,
             CallbackGatewayListener(
-                eventHandler = { event -> handleIncoming(event) },
-                stateHandler = { state -> _login.update { it.copy(status = stateText(state)) } },
+                eventHandler = { event -> viewModelScope.launch {
+                    if (version == sessionVersion) handleIncoming(event)
+                } },
+                stateHandler = { state -> viewModelScope.launch {
+                    if (version == sessionVersion) {
+                        _login.update { it.copy(status = stateText(state)) }
+                        _conversations.update { it.copy(connectionStatus = stateText(state)) }
+                    }
+                } },
                 logHandler = { line -> appendLog(line) },
             ),
         )
@@ -151,8 +156,14 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         gateway = newGateway
 
         // 真实凭证登录成功：退出演示模式，清掉内存里的演示会话。
+        if (isDemoMode) {
+            store = ConversationStore()
+            repository.load(store)
+        }
         isDemoMode = false
-        clearDemoConversations()
+        _conversations.value = ConversationListUiState()
+        _chat.value = ChatUiState()
+        refreshConversations()
 
         // 凭证已验证通过，进入主界面；WebSocket 在后台建立，状态文案实时反馈。
         _login.update {
@@ -174,16 +185,30 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
             it.copy(connecting = false, connected = true, status = "演示模式 · 未连接网关")
         }
         // 演示模式：清空内存后注入演示数据，且整个模式期间不写盘。
+        gateway?.close()
+        gateway = null
+        api = null
+        sessionVersion++
         isDemoMode = true
-        store.clear()
+        store = ConversationStore()
+        _chat.value = ChatUiState()
+        _conversations.value = ConversationListUiState()
         demoSeed(store)
         refreshConversations()
     }
 
     fun logout() {
+        sessionVersion++
+        visibleConversationId = null
         gateway?.close()
         gateway = null
         api = null
+        if (isDemoMode) {
+            store = ConversationStore()
+            repository.load(store)
+        }
+        isDemoMode = false
+        _conversations.value = ConversationListUiState()
         _login.update { LoginUiState(status = "已退出登录") }
         _chat.update { ChatUiState() }
         refreshConversations()
@@ -199,37 +224,27 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         if (diagMsg.text.contains("[图片]") && diagMsg.imageUrl == null) {
             appendLog("图片消息未解析出 URL: text=" + diagMsg.text.take(40))
         }
-        store.onIncoming(event)
+        store.onIncoming(event, markUnread = visibleConversationId != event.target)
         if (_chat.value.conversationId == event.target) refreshChat(event.target)
         refreshConversations()
     }
 
     // ---- 会话列表 ----
-    private fun refreshConversations() {
-        val query = _conversations.value.query.trim()
-        // 归档会话单独一组，对应 TG DialogsActivity 顶部的「已归档」入口。
-        val archived = store.allConversations(includeArchived = true)
-            .filter { it.archived }
-            .sortedByDescending { MessageParser.epoch(it.lastTimestamp) }
-        val list = store.allConversations(includeArchived = false)
-            // TG DialogsActivity：置顶会话优先，其余按最后消息时间倒序。
-            .sortedWith(
-                compareByDescending<Conversation> { it.pinned }
-                    .thenByDescending { MessageParser.epoch(it.lastTimestamp) },
-            )
-            .filter {
-                query.isEmpty() ||
-                    it.displayName.contains(query, ignoreCase = true) ||
-                    it.lastText.contains(query, ignoreCase = true)
-            }
+    private fun refreshConversations(save: Boolean = true) {
+        val all = store.allConversations()
         _conversations.update {
             it.copy(
-                conversations = list,
-                archivedConversations = if (query.isEmpty()) archived else emptyList(),
+                conversations = all.filterNot { conversation -> conversation.archived },
+                archivedConversations = all.filter { conversation -> conversation.archived },
+                connectionStatus = _login.value.status,
+                demoMode = isDemoMode,
             )
         }
-        // 会话状态变更后落盘，保证 App 重启后数据不丢。
-        persist()
+        if (save) persist()
+    }
+
+    fun setFilter(filter: ConversationFilter) {
+        _conversations.update { it.copy(filter = filter) }
     }
 
     /** 切换「查看归档」模式。 */
@@ -239,7 +254,6 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
 
     fun onQueryChange(value: String) {
         _conversations.update { it.copy(query = value) }
-        refreshConversations()
     }
 
     fun togglePin(id: String) {
@@ -276,112 +290,144 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun openConversation(id: String) {
+        visibleConversationId = id
         store.markRead(id)
-        refreshConversations()
-        val c = store.getConversation(id)
-        _chat.update {
-            it.copy(
+        val conversation = store.snapshot(id) ?: return
+        if (_chat.value.conversationId != id) {
+            _chat.value = ChatUiState(
                 conversationId = id,
-                scene = c?.scene ?: "c2c",
-                title = c?.displayName ?: "聊天",
-                messages = store.allMessages(id),
+                scene = conversation.scene,
+                title = conversation.displayName,
+                messages = conversation.messages.toList(),
+                draft = conversation.draft,
+                replyingTo = conversation.messages.firstOrNull { it.id == conversation.draftReplyId },
+                demoMode = isDemoMode,
+            )
+        } else refreshChat(id)
+        refreshConversations()
+    }
+
+    fun closeConversation(id: String) {
+        if (visibleConversationId == id) visibleConversationId = null
+    }
+
+    private fun refreshChat(id: String) {
+        val messages = store.allMessages(id)
+        _chat.update { state ->
+            if (state.conversationId != id) state else state.copy(
+                messages = messages,
+                searchResults = if (state.searchQuery.isBlank()) emptyList()
+                    else messages.filter { it.matchesQuery(state.searchQuery) },
             )
         }
-    }
-
-    // ---- 聊天 / 收发 / 撤回 / 搜索 ----
-    private fun refreshChat(id: String) {
-        _chat.update { it.copy(messages = store.allMessages(id)) }
-    }
-
-    private fun setMessageStatus(conversationId: String, messageId: String, status: String) {
-        store.update(conversationId) { c ->
-            val index = c.messages.indexOfFirst { it.id == messageId }
-            if (index >= 0) c.messages[index] = c.messages[index].copy(status = status)
-        }
-        persist()
     }
 
     fun onDraftChange(value: String) {
         _chat.update { it.copy(draft = value) }
+        saveDraft()
+    }
+
+    private fun saveDraft() {
+        val chat = _chat.value
+        store.setDraft(chat.conversationId, chat.draft, chat.replyingTo?.id)
+        refreshConversations()
     }
 
     fun setReplyingTo(message: ChatMessage) {
         _chat.update { it.copy(replyingTo = message) }
+        saveDraft()
     }
 
     fun clearReply() {
         _chat.update { it.copy(replyingTo = null) }
+        saveDraft()
     }
 
     fun send() {
-        val text = _chat.value.draft.trim()
+        val chat = _chat.value
+        val text = chat.draft.trim()
         if (text.isEmpty()) return
-        val conversationId = _chat.value.conversationId
-        val conversation = store.getConversation(conversationId) ?: return
-        val reply = _chat.value.replyingTo
+        val conversation = store.snapshot(chat.conversationId) ?: return
         val message = ChatMessage(
-            id = "local-" + System.currentTimeMillis(),
-            text = text,
-            timestamp = Instant.now().toString(),
-            fromBot = true,
-            authorName = "我",
-            status = "sending",
-            quotedId = reply?.id,
-            quotedText = reply?.text,
+            id = UUID.randomUUID().toString(), text = text,
+            timestamp = Instant.now().toString(), fromBot = true, authorName = "我",
+            status = "sending", quotedId = chat.replyingTo?.id, quotedText = chat.replyingTo?.summary,
         )
-        store.recordOutgoing(conversationId, conversation.scene, message)
+        store.recordOutgoing(conversation.id, conversation.scene, message)
         _chat.update { it.copy(draft = "", replyingTo = null) }
-        refreshChat(conversationId)
-        refreshConversations()
+        saveDraft()
+        refreshChat(conversation.id)
+        deliver(conversation.id, message.id)
+    }
 
-        viewModelScope.launch(Dispatchers.IO) {
-            val ok = try {
-                val currentApi = api
-                if (currentApi == null) {
-                    false
-                } else {
-                    currentApi.sendMessage(
-                        scene = conversation.scene,
-                        targetId = conversationId,
-                        text = text,
-                        replyId = conversation.replyId,
-                        replySeq = conversation.replySeq,
-                        quoteId = reply?.id,
-                    )
-                    store.noteReplySent(conversationId, conversation.replySeq + 1)
-                    true
-                }
-            } catch (e: Exception) {
-                appendLog("发送失败：" + (e.message ?: "未知错误"))
-                false
+    private fun deliver(targetId: String, messageId: String) {
+        val targetStore = store
+        val currentApi = api
+        val version = sessionVersion
+        val demo = isDemoMode
+        viewModelScope.launch {
+            val error = withContext(Dispatchers.IO) {
+                runCatching {
+                    if (demo) targetStore.updateMessage(targetId, messageId) { it.copy(status = "sent") }
+                    else MessageDelivery(targetStore, requireNotNull(currentApi) { "尚未连接网关" })
+                        .send(targetId, messageId)
+                }.exceptionOrNull()
             }
-            setMessageStatus(conversationId, message.id, if (ok) "sent" else "failed")
-            refreshChat(conversationId)
+            if (version != sessionVersion) return@launch
+            if (error != null) {
+                targetStore.updateMessage(targetId, messageId) { it.copy(status = "failed") }
+                reportError(targetId, error)
+            }
+            refreshChat(targetId)
+            refreshConversations()
         }
+    }
+
+    fun retry(messageId: String) {
+        val targetId = _chat.value.conversationId
+        val message = store.allMessages(targetId).firstOrNull { it.id == messageId } ?: return
+        if (!message.fromBot || message.status != "failed") return
+        if (!message.isText) {
+            _chat.update { it.copy(notice = ChatNotice.MEDIA_RESELECT) }
+            return
+        }
+        store.updateMessage(targetId, messageId) { it.copy(status = "sending") }
+        refreshChat(targetId)
+        deliver(targetId, messageId)
     }
 
     fun recall(messageId: String) {
-        val conversationId = _chat.value.conversationId
-        val conversation = store.getConversation(conversationId) ?: return
-        setMessageStatus(conversationId, messageId, "recalled")
-        refreshChat(conversationId)
-        viewModelScope.launch(Dispatchers.IO) {
-            try {
-                api?.recallMessage(conversation.scene, conversationId, messageId)
-            } catch (e: Exception) {
-                appendLog("撤回失败：" + (e.message ?: "未知错误"))
+        val targetId = _chat.value.conversationId
+        val targetStore = store
+        val currentApi = api
+        val version = sessionVersion
+        val demo = isDemoMode
+        viewModelScope.launch {
+            val error = withContext(Dispatchers.IO) {
+                runCatching {
+                    if (demo) targetStore.updateMessage(targetId, messageId) { it.copy(status = "recalled") }
+                    else MessageDelivery(targetStore, requireNotNull(currentApi) { "尚未连接网关" })
+                        .recall(targetId, messageId)
+                }.exceptionOrNull()
             }
+            if (version != sessionVersion) return@launch
+            if (error != null) reportError(targetId, error)
+            refreshChat(targetId)
+            refreshConversations()
         }
     }
 
+    private fun reportError(targetId: String, error: Throwable) {
+        appendLog(error.message ?: "操作失败")
+        _chat.update { if (it.conversationId == targetId) it.copy(error = error.message ?: "操作失败") else it }
+    }
+
+    fun dismissChatNotice() { _chat.update { it.copy(error = null, notice = null) } }
+
     fun searchInChat(query: String) {
         _chat.update {
-            it.copy(
-                searchQuery = query,
-                searchResults = if (query.isBlank()) emptyList()
-                else it.messages.filter { m -> m.text.contains(query.trim(), ignoreCase = true) },
-            )
+            it.copy(searchQuery = query, searchResults = if (query.isBlank()) emptyList()
+                else it.messages.filter { message -> message.matchesQuery(query) })
         }
     }
 
@@ -397,74 +443,58 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     /** 本地删除一条消息（QQ 无「删除他人消息」能力，仅删本地记录）。 */
     fun deleteMessage(messageId: String) {
         val id = _chat.value.conversationId
-        store.update(id) { c -> c.messages.removeAll { it.id == messageId } }
+        store.deleteMessage(id, messageId)
         refreshChat(id)
         refreshConversations()
         dismissActions()
     }
 
-    /** 转发消息到另一个会话：复制正文与媒体 URL 作为新的发出消息。 */
-    fun forward(messageId: String, targetId: String) {
-        val source = store.getConversation(_chat.value.conversationId)
-            ?.messages?.firstOrNull { it.id == messageId } ?: return
-        val target = store.getConversation(targetId) ?: return
-        val copy = source.copy(
-            id = "fwd-" + System.currentTimeMillis(),
-            fromBot = true,
-            authorName = "我",
-            timestamp = Instant.now().toString(),
-            status = "sending",
-            quotedId = null,
-            quotedText = null,
-        )
-        store.recordOutgoing(targetId, target.scene, copy)
-        dismissActions()
-        refreshConversations()
-        viewModelScope.launch(Dispatchers.IO) {
-            val ok = try {
-                api?.sendMessage(
-                    scene = target.scene,
-                    targetId = targetId,
-                    text = source.text,
-                    replyId = target.replyId,
-                    replySeq = target.replySeq,
-                )
-                true
-            } catch (e: Exception) {
-                appendLog("转发失败：" + (e.message ?: "未知错误"))
-                false
-            }
-            setMessageStatus(targetId, copy.id, if (ok) "sent" else "failed")
-        }
-    }
-
-    /** 频道消息表态：把 UI emoji 映射为 QQ 系统 emoji id（官方系统表情 emojiType=1）。 */
-    fun react(messageId: String, emoji: String) {
-        val conversationId = _chat.value.conversationId
-        val scene = store.getConversation(conversationId)?.scene ?: return
-        if (scene != "channel") {
-            _settings.update { it.copy(status = "表情回应仅频道消息支持") }
+    fun showForwardPicker(messageId: String) {
+        val message = store.allMessages(_chat.value.conversationId).firstOrNull { it.id == messageId } ?: return
+        if (!message.isText || message.text.isBlank()) {
+            _chat.update { it.copy(notice = ChatNotice.TEXT_FORWARD_ONLY) }
             return
         }
-        val emojiId = reactionEmojiId(emoji)
-        // 本地即时显示徽章
-        store.update(conversationId) { c ->
-            val i = c.messages.indexOfFirst { it.id == messageId }
-            if (i >= 0) {
-                val m = c.messages[i]
-                c.messages[i] = m.copy(
-                    reactions = m.reactions + (emoji to ((m.reactions[emoji] ?: 0) + 1)),
-                )
+        _chat.update { it.copy(forwardMessage = message,
+            forwardTargets = store.allConversations().filter { target -> target.id != it.conversationId }) }
+    }
+
+    fun dismissForwardPicker() { _chat.update { it.copy(forwardMessage = null) } }
+
+    fun forward(targetId: String) {
+        val source = _chat.value.forwardMessage ?: return
+        val target = store.snapshot(targetId) ?: return
+        val copy = ChatMessage(
+            id = UUID.randomUUID().toString(), text = source.text,
+            timestamp = Instant.now().toString(), fromBot = true, authorName = "我", status = "sending",
+        )
+        store.recordOutgoing(targetId, target.scene, copy)
+        _chat.update { it.copy(forwardMessage = null, notice = ChatNotice.FORWARDED) }
+        refreshConversations()
+        deliver(targetId, copy.id)
+    }
+
+    fun react(messageId: String, emoji: String) {
+        val targetId = _chat.value.conversationId
+        if (_chat.value.scene != "channel") return
+        val message = store.allMessages(targetId).firstOrNull { it.id == messageId } ?: return
+        val currentApi = api
+        val targetStore = store
+        val demo = isDemoMode
+        val version = sessionVersion
+        viewModelScope.launch {
+            val error = withContext(Dispatchers.IO) {
+                runCatching {
+                    if (!demo) requireNotNull(currentApi).addReaction(targetId,
+                        requireNotNull(message.remoteId), reactionEmojiId(emoji), emojiType = 1)
+                }.exceptionOrNull()
             }
-        }
-        refreshChat(conversationId)
-        dismissActions()
-        viewModelScope.launch(Dispatchers.IO) {
-            try {
-                api?.addReaction(conversationId, messageId, emojiId, emojiType = 1)
-            } catch (e: Exception) {
-                appendLog("表态失败：" + (e.message ?: "未知错误"))
-            }
+            if (version != sessionVersion) return@launch
+            if (error == null) targetStore.updateMessage(targetId, messageId) {
+                it.copy(reactions = it.reactions + (emoji to ((it.reactions[emoji] ?: 0) + 1)))
+            } else reportError(targetId, error)
+            refreshChat(targetId)
+            refreshConversations()
         }
     }
 
@@ -475,49 +505,42 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         send()
     }
 
-    /** 发送富媒体：先上传拿 file_info，再以 msg_type 7 发出。 */
+    /** Uploads are bounded by the attachment loader and run outside the UI thread. */
     fun sendMedia(bytes: ByteArray, fileName: String, fileType: Int, localPath: String? = null) {
-        val conversationId = _chat.value.conversationId
-        val conversation = store.getConversation(conversationId) ?: return
+        val targetId = _chat.value.conversationId
+        val conversation = store.snapshot(targetId) ?: return
         val local = ChatMessage(
-            id = "media-" + System.currentTimeMillis(),
-            text = "",
-            timestamp = Instant.now().toString(),
-            fromBot = true,
-            authorName = "我",
-            status = "sending",
-            fileName = if (fileType == 4) fileName else null,
-            imageUrl = if (fileType == 1) "local" else null,
-            localImage = if (fileType == 1) localPath else null,
-            videoUrl = if (fileType == 2) "local" else null,
-            audioUrl = if (fileType == 3) "local" else null,
+            id = UUID.randomUUID().toString(), text = "", timestamp = Instant.now().toString(),
+            fromBot = true, authorName = "我", status = "sending",
+            fileName = fileName.takeIf { fileType == 4 },
+            imageUrl = "local".takeIf { fileType == 1 }, localImage = localPath.takeIf { fileType == 1 },
+            videoUrl = "local".takeIf { fileType == 2 }, audioUrl = "local".takeIf { fileType == 3 },
         )
-        store.recordOutgoing(conversationId, conversation.scene, local)
-        refreshChat(conversationId)
+        store.recordOutgoing(targetId, conversation.scene, local)
+        refreshChat(targetId)
         refreshConversations()
-        viewModelScope.launch(Dispatchers.IO) {
-            val ok = try {
-                val currentApi = api
-                if (currentApi == null) false else {
-                    val info = currentApi.uploadMediaFileInfo(
-                        conversation.scene, conversationId, fileType, fileName, bytes,
-                    )
-                    currentApi.sendMessage(
-                        scene = conversation.scene,
-                        targetId = conversationId,
-                        text = "",
-                        replyId = conversation.replyId,
-                        replySeq = conversation.replySeq,
-                        mediaFileInfo = info,
-                    )
-                    true
-                }
-            } catch (e: Exception) {
-                appendLog("媒体发送失败：" + (e.message ?: "未知错误"))
-                false
+        val targetStore = store
+        val currentApi = api
+        val demo = isDemoMode
+        val version = sessionVersion
+        viewModelScope.launch {
+            val error = withContext(Dispatchers.IO) {
+                runCatching {
+                    if (demo) targetStore.updateMessage(targetId, local.id) { it.copy(status = "sent") }
+                    else {
+                        val connectedApi = requireNotNull(currentApi) { "尚未连接网关" }
+                        val info = connectedApi.uploadMediaFileInfo(conversation.scene, targetId, fileType, fileName, bytes)
+                        MessageDelivery(targetStore, connectedApi).send(targetId, local.id, info)
+                    }
+                }.exceptionOrNull()
             }
-            setMessageStatus(conversationId, local.id, if (ok) "sent" else "failed")
-            refreshChat(conversationId)
+            if (version != sessionVersion) return@launch
+            if (error != null) {
+                targetStore.updateMessage(targetId, local.id) { it.copy(status = "failed") }
+                reportError(targetId, error)
+            }
+            refreshChat(targetId)
+            refreshConversations()
         }
     }
 
@@ -552,7 +575,11 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                 if (a == null) listOf("未连接网关，无法调用频道 API")
                 else when (action) {
                     ChannelAction.MyGuilds -> renderArray(a.getMyGuilds(), "id", "name")
-                    ChannelAction.GuildChannels -> renderArray(a.getGuildChannels(conversationId), "id", "name")
+                    ChannelAction.GuildChannels -> {
+                        val guildId = a.getChannel(conversationId).get("guild_id")?.asString
+                        require(!guildId.isNullOrBlank()) { "无法获取当前频道所属的服务器" }
+                        renderArray(a.getGuildChannels(guildId), "id", "name")
+                    }
                     ChannelAction.GuildMembers -> listOf("成员列表需频道管理权限，官方 Bot API 未提供只读端点")
                     ChannelAction.ChannelPins -> renderArray(a.getChannelPins(conversationId), "message_id", "id")
                     ChannelAction.ChannelSchedules -> renderArray(a.getChannelSchedules(conversationId), "id", "name")
@@ -634,7 +661,6 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     fun clearAll() {
         store.clear()
         // 清空语义：连本地持久化文件一起删除，重启后不应再出现旧会话。
-        repository.clear()
         refreshConversations()
         _chat.update { ChatUiState() }
         _settings.update { it.copy(status = "已清空所有会话与本地记录") }
@@ -649,7 +675,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                     (if (m.fromBot) "我" else m.authorName) + "：" + m.summary
             }
         }
-        val recentLogs = logs.toList().takeLast(50)
+        val recentLogs = synchronized(logs) { logs.toList().takeLast(50) }
         if (recentLogs.isNotEmpty()) {
             lines += "=== 网关日志 ==="
             lines.addAll(recentLogs)
@@ -664,6 +690,11 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
 
     fun dismissExport() {
         _settings.update { it.copy(exportText = null) }
+    }
+
+    override fun onCleared() {
+        gateway?.close()
+        super.onCleared()
     }
 
     fun dismissStatus() {

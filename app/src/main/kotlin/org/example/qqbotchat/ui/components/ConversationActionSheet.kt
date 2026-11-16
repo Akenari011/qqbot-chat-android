@@ -18,6 +18,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -42,6 +47,7 @@ import org.example.qqbotchat.ui.theme.TgTheme
  * @param onToggleArchive 归档 / 取消归档。
  * @param onDelete 删除会话（含本地记录）。
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ConversationActionSheet(
     conversation: Conversation,
@@ -54,12 +60,12 @@ fun ConversationActionSheet(
     modifier: Modifier = Modifier,
 ) {
     val c = TgTheme.colors
-    Dialog(onDismissRequest = onDismiss) {
+    TgActionSheet(onDismiss) { close ->
         Column(
             modifier = modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(16.dp))
-                .background(c.surface),
+                .background(c.surface).verticalScroll(rememberScrollState()),
         ) {
             // 头部：会话名 + 当前状态摘要
             Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
@@ -86,17 +92,17 @@ fun ConversationActionSheet(
             }
             SheetDivider(c.divider)
 
-            ActionLine("标记已读", enabled = conversation.unread > 0, onClick = onMarkRead)
+            ActionLine("标记已读", enabled = conversation.unread > 0, onClick = { close(onMarkRead) })
             SheetDivider(c.divider)
-            ActionLine(if (conversation.pinned) "取消置顶" else "置顶", onClick = onTogglePin)
+            ActionLine(if (conversation.pinned) "取消置顶" else "置顶", onClick = { close(onTogglePin) })
             SheetDivider(c.divider)
-            ActionLine(if (conversation.muted) "取消静音" else "静音", onClick = onToggleMute)
+            ActionLine(if (conversation.muted) "取消静音" else "静音", onClick = { close(onToggleMute) })
             SheetDivider(c.divider)
-            ActionLine(if (conversation.archived) "取消归档" else "归档", onClick = onToggleArchive)
+            ActionLine(if (conversation.archived) "取消归档" else "归档", onClick = { close(onToggleArchive) })
             SheetDivider(c.divider)
-            ActionLine("删除会话", danger = true, onClick = onDelete)
+            ActionLine("删除会话", danger = true, onClick = { close(onDelete) })
             SheetDivider(c.divider)
-            ActionLine("取消", onClick = onDismiss)
+            ActionLine("取消", onClick = { close(onDismiss) })
         }
     }
 }

@@ -6,6 +6,7 @@ package org.example.qqbotchat.vm
 
 import org.example.qqbotchat.core.ChatMessage
 import org.example.qqbotchat.core.Conversation
+import org.example.qqbotchat.core.ConversationFilter
 
 /** 登录页：AppID / AppSecret / 连接状态。 */
 data class LoginUiState(
@@ -24,6 +25,9 @@ data class ConversationListUiState(
     /** 是否正在查看归档列表。 */
     val showingArchived: Boolean = false,
     val query: String = "",
+    val filter: ConversationFilter = ConversationFilter.ALL,
+    val connectionStatus: String = "",
+    val demoMode: Boolean = false,
 )
 
 /** 聊天页：当前会话、消息、草稿、引用、搜索状态。 */
@@ -39,7 +43,14 @@ data class ChatUiState(
     val actionTarget: ChatMessage? = null,
     val toolsTitle: String? = null,
     val toolsItems: List<String> = emptyList(),
+    val forwardMessage: ChatMessage? = null,
+    val forwardTargets: List<Conversation> = emptyList(),
+    val error: String? = null,
+    val notice: ChatNotice? = null,
+    val demoMode: Boolean = false,
 )
+
+enum class ChatNotice { FORWARDED, REACTION_FAILED, RECALL_FAILED, MEDIA_RESELECT, TEXT_FORWARD_ONLY }
 
 /** 设置页：主题、字体缩放、操作提示与导出日志预览。 */
 data class SettingsUiState(

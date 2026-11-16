@@ -10,6 +10,8 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
 
 /**
  * @param darkTheme     暗色主题（TG Dark/Night）
@@ -57,10 +59,14 @@ fun QQBotChatTheme(
             error = tg.error,
         )
     }
-    CompositionLocalProvider(LocalTgColors provides tg) {
+    val density = LocalDensity.current
+    CompositionLocalProvider(
+        LocalTgColors provides tg,
+        LocalDensity provides Density(density.density, density.fontScale * fontScale),
+    ) {
         MaterialTheme(
             colorScheme = scheme,
-            typography = appTypography(fontScale),
+            typography = appTypography(1f),
             content = content,
         )
     }
